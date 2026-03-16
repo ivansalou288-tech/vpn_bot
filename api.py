@@ -6,13 +6,15 @@ import datetime
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 BASE_URL = 'https://ezh-dev.ru:45618/NDytSmlXITQ2e4MMnc'
 
+import secret
 
-
+admn_username = secret.user
+admn_pass = secret.password
 def login():
 
     admin_login = {
-        "username": "2p9UguXWvb",
-        "password": "RyR2wN0M9f"
+        "username": admn_username,
+        "password": admn_pass
     }
 
     response = requests.post(f"{BASE_URL}/login", json=admin_login, verify=False)
@@ -21,8 +23,8 @@ def login():
 def get_clients():
     # First login to get session
     admin_login = {
-        "username": "2p9UguXWvb",
-        "password": "RyR2wN0M9f"
+        "username": admn_username,
+        "password": admn_pass
     }
     
     # Create session and login
@@ -63,8 +65,8 @@ def add_inbrouds(name: str, client_name: str, client_id: str):
     }
 
     admin_login = {
-        "username": "2p9UguXWvb",
-        "password": "RyR2wN0M9f"
+        "username": admn_username,
+        "password": admn_pass
     }
     
     # Create session and login
@@ -90,8 +92,8 @@ def add_inbrouds(name: str, client_name: str, client_id: str):
 def getNewmldsa65():
     # First login to get session
     admin_login = {
-        "username": "2p9UguXWvb",
-        "password": "RyR2wN0M9f"
+        "username": admn_username,
+        "password": admn_pass
     }
     
     # Create session and login
@@ -120,8 +122,8 @@ def getNewmldsa65():
 def getNewX25519Cert():
     # First login to get session
     admin_login = {
-        "username": "2p9UguXWvb",
-        "password": "RyR2wN0M9f"
+        "username": admn_username,
+        "password": admn_pass
     }
     
     # Create session and login
@@ -297,8 +299,8 @@ def add_client(inbound_id: int, username: str, tg_id: int, date: str):
     print(f"Settings data being sent: {settings_data}")
     
     admin_login = {
-        "username": "2p9UguXWvb",
-        "password": "RyR2wN0M9f"
+        "username": admn_username,
+        "password": admn_pass
     }
     
     # Create session and login
