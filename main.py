@@ -468,6 +468,11 @@ async def approve_payment_callback(callback: types.CallbackQuery):
             f"<tg-emoji emoji-id='5440621591387980068'>📅</tg-emoji> Действует до: {end_date_str}\n\n"
             "Подписка активирована! 🎉"
         ),
+        reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="Моя подписка", callback_data="subscription", style="primary", icon_custom_emoji_id='5296369303661067030')]
+            ]
+        ),
         parse_mode=ParseMode.HTML
     )
     
