@@ -15,7 +15,7 @@ from aiogram.utils.keyboard import InlineKeyboardMarkup, InlineKeyboardButton
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-from api import add_client, getSubById
+from api import add_client, getSubById, check_cantfree, add_to_cantfree
 
 OPERATOR_CHAT_ID = 1240656726
 
@@ -39,6 +39,11 @@ class Price(Base):
     id = Column(Integer, primary_key=True)
     time = Column(Integer)
     price = Column(Integer)
+
+class CantFree(Base):
+    __tablename__ = "cant_free"
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer)
 
 # Создание таблиц (асинхронно)
 async def create_tables():
@@ -229,8 +234,6 @@ import sys
 import os
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-from api import add_client, getSubById
-
 def convert_timestamp_to_human_readable(timestamp_ms):
     """Конвертирует timestamp в миллисекундах в читаемый формат ДД.ММ.ГГГГ ЧЧ:ММ:СС"""
     if timestamp_ms == 0:
@@ -304,12 +307,24 @@ async def subscription_callback(callback: types.CallbackQuery):
         else:
             subscription_keyboard = None
     elif status == "no_subscription":
-        # Создаем клавиатуру с кнопкой покупки
-        subscription_keyboard = InlineKeyboardMarkup(
-            inline_keyboard=[
-                [InlineKeyboardButton(text="Купить подписку", callback_data="buy_subscription", style="primary", icon_custom_emoji_id='5271604874419647061')]
-            ]
-        )
+        # Проверяем есть ли пользователь в CantFree
+        cantfree_result = check_cantfree(user_tg_id)
+        
+        if cantfree_result.get("exists") == False:
+            # Пользователя нет в CantFree - предлагаем пробный период
+            subscription_keyboard = InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [InlineKeyboardButton(text="Пробный период", callback_data="trial_period", style="primary", icon_custom_emoji_id='5406756500108501710')],
+                    [InlineKeyboardButton(text="Купить подписку", callback_data="buy_subscription", style="primary", icon_custom_emoji_id='5271604874419647061')]
+                ]
+            )
+        else:
+            # Пользователь уже использовал пробный период
+            subscription_keyboard = InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [InlineKeyboardButton(text="Купить подписку", callback_data="buy_subscription", style="primary", icon_custom_emoji_id='5271604874419647061')]
+                ]
+            )
     else:
         # Для ошибок - без клавиатуры
         subscription_keyboard = None
@@ -347,6 +362,80 @@ async def buy_subscription_callback(callback: types.CallbackQuery):
         reply_markup=buy_keyboard,
         parse_mode=ParseMode.HTML
     )
+
+@router.callback_query(lambda callback: callback.data == "trial_period")
+async def trial_period_callback(callback: types.CallbackQuery):
+    await callback.answer()
+    await callback.message.delete()
+    
+    user_tg_id = callback.from_user.id
+    user_username = callback.from_user.username
+    
+    # Проверяем еще раз что пользователя нет в CantFree
+    cantfree_result = check_cantfree(user_tg_id)
+    
+    if cantfree_result.get("exists") == True:
+        # Пользователь уже использовал пробный период
+        await callback.message.answer(
+            "<tg-emoji emoji-id='5411225014148014586'>❌</tg-emoji> <b>Пробный период уже использован</b>\n\n"
+            "Вы уже активировали пробный период ранее.\n"
+            "Для продолжения использования VPN необходимо оформить подписку.",
+            reply_markup=InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [InlineKeyboardButton(text="Купить подписку", callback_data="buy_subscription", style="primary", icon_custom_emoji_id='5271604874419647061')]
+                ]
+            ),
+            parse_mode=ParseMode.HTML
+        )
+        return
+    
+    # Добавляем пользователя в CantFree
+    add_result = add_to_cantfree(user_tg_id, user_username)
+    
+    if add_result.get("success"):
+        # Создаем пробную подписку на 3 дня
+        current_time = datetime.datetime.now()
+        end_time = current_time + datetime.timedelta(days=3)
+        end_timestamp = int(end_time.timestamp() * 1000)
+        end_date_str = end_time.strftime("%d.%m.%Y")
+        
+        # Добавляем клиента в систему с пробной подпиской
+        try:
+            api_date = end_time.strftime("%d.%m.%Y")
+            client_result = add_client(21, f"trial_user_{user_tg_id}", user_tg_id, api_date)
+            
+            await callback.message.answer(
+                "<tg-emoji emoji-id='5416081784641168838'>✅</tg-emoji> <b>Пробный период активирован!</b>\n\n"
+                f"🎁 <b>Пробный период на 3 дня</b>\n"
+                f"📅 Действует до: {end_date_str}\n"
+                f"⏰ Осталось: 3 дня\n\n"
+                "Доступ ко всем функциям VPN:\n"
+                "• Безлимитный трафик\n"
+                "• Высокая скорость\n"
+                "• Все устройства\n\n"
+                "Для продления подпишитесь на платный тариф!",
+                reply_markup=InlineKeyboardMarkup(
+                    inline_keyboard=[
+                        [InlineKeyboardButton(text="Моя подписка", callback_data="subscription", style="primary", icon_custom_emoji_id='5296369303661067030')],
+                        [InlineKeyboardButton(text="Купить подписку", callback_data="buy_subscription", style="primary", icon_custom_emoji_id='5271604874419647061')]
+                    ]
+                ),
+                parse_mode=ParseMode.HTML
+            )
+            
+        except Exception as e:
+            await callback.message.answer(
+                "<tg-emoji emoji-id='5411225014148014586'>❌</tg-emoji> <b>Ошибка активации</b>\n\n"
+                "Не удалось создать пробную подписку. Пожалуйста, обратитесь в поддержку.",
+                parse_mode=ParseMode.HTML
+            )
+            print(f"Error adding trial client: {e}")
+    else:
+        await callback.message.answer(
+            "<tg-emoji emoji-id='5411225014148014586'>❌</tg-emoji> <b>Ошибка активации</b>\n\n"
+            "Не удалось активировать пробный период. Пожалуйста, попробуйте позже.",
+            parse_mode=ParseMode.HTML
+        )
 
 @router.callback_query(lambda callback: callback.data.startswith("select_price_"))
 async def select_price_callback(callback: types.CallbackQuery):

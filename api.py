@@ -320,4 +320,72 @@ def add_client(inbound_id: int, username: str, tg_id: int, date: str):
     else:
         return {"error": "Login failed"}
 
+def check_cantfree(tg_id):
+    """Проверяет есть ли пользователь в CantFree"""
+    admin_login = {
+        "username": admn_username,
+        "password": admn_pass
+    }
+    
+    # Create session and login
+    session = requests.Session()
+    session.verify = False
+    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+    
+    try:
+        # Login
+        login_response = session.post(f"{BASE_URL}/login", json=admin_login)
+        if login_response.status_code != 200:
+            return {"error": "Login failed"}
+        
+        # Get CantFree users
+        cantfree_response = session.get(f"{BASE_URL}/cantfree")
+        if cantfree_response.status_code == 200:
+            cantfree_users = cantfree_response.json()
+            
+            # Check if user exists in CantFree
+            for user in cantfree_users:
+                if str(user.get('tgId')) == str(tg_id):
+                    return {"exists": True, "user": user}
+            
+            return {"exists": False}
+        else:
+            return {"error": "Failed to get CantFree users"}
+            
+    except Exception as e:
+        return {"error": str(e)}
+
+def add_to_cantfree(tg_id, username):
+    """Добавляет пользователя в CantFree"""
+    admin_login = {
+        "username": admn_username,
+        "password": admn_pass
+    }
+    
+    # Create session and login
+    session = requests.Session()
+    session.verify = False
+    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+    
+    try:
+        # Login
+        login_response = session.post(f"{BASE_URL}/login", json=admin_login)
+        if login_response.status_code != 200:
+            return {"error": "Login failed"}
+        
+        # Add to CantFree
+        cantfree_data = {
+            "tgId": tg_id,
+            "username": username or f"user_{tg_id}"
+        }
+        
+        add_response = session.post(f"{BASE_URL}/cantfree", json=cantfree_data)
+        if add_response.status_code == 200:
+            return {"success": True, "message": "User added to CantFree"}
+        else:
+            return {"error": f"Failed to add to CantFree: {add_response.status_code}"}
+            
+    except Exception as e:
+        return {"error": str(e)}
+
 
