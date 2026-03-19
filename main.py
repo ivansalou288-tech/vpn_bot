@@ -249,6 +249,32 @@ def convert_timestamp_to_human_readable(timestamp_ms):
     except (ValueError, OSError) as e:
         return f"Ошибка конвертации: {e}"
 
+# Асинхронная функция для проверки пользователя в CantFree (локальная)
+async def check_cantfree_local(tg_id):
+    """Проверяет есть ли пользователь в локальной CantFree таблице"""
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(select(CantFree).filter(CantFree.user_id == tg_id))
+        user = result.scalar_one_or_none()
+        return {"exists": user is not None}
+
+# Асинхронная функция для добавления пользователя в CantFree (локальная)
+async def add_to_cantfree_local(tg_id, username):
+    """Добавляет пользователя в локальную CantFree таблицу"""
+    async with AsyncSessionLocal() as session:
+        # Проверяем есть ли уже такой пользователь
+        result = await session.execute(select(CantFree).filter(CantFree.user_id == tg_id))
+        existing_user = result.scalar_one_or_none()
+        
+        if existing_user:
+            return {"success": False, "message": "User already exists"}
+        
+        # Добавляем нового пользователя
+        new_user = CantFree(user_id=tg_id)
+        session.add(new_user)
+        await session.commit()
+        await session.refresh(new_user)
+        return {"success": True, "message": "User added to CantFree"}
+
 # Асинхронная функция для получения информации о подписке по TG ID
 async def get_subscription_info(tg_id: int):
     try:
@@ -307,8 +333,8 @@ async def subscription_callback(callback: types.CallbackQuery):
         else:
             subscription_keyboard = None
     elif status == "no_subscription":
-        # Проверяем есть ли пользователь в CantFree
-        cantfree_result = check_cantfree(user_tg_id)
+        # Проверяем есть ли пользователь в CantFree (локально)
+        cantfree_result = await check_cantfree_local(user_tg_id)
         
         if cantfree_result.get("exists") == False:
             # Пользователя нет в CantFree - предлагаем пробный период
@@ -371,8 +397,8 @@ async def trial_period_callback(callback: types.CallbackQuery):
     user_tg_id = callback.from_user.id
     user_username = callback.from_user.username
     
-    # Проверяем еще раз что пользователя нет в CantFree
-    cantfree_result = check_cantfree(user_tg_id)
+    # Проверяем еще раз что пользователя нет в CantFree (локально)
+    cantfree_result = await check_cantfree_local(user_tg_id)
     
     if cantfree_result.get("exists") == True:
         # Пользователь уже использовал пробный период
@@ -389,8 +415,8 @@ async def trial_period_callback(callback: types.CallbackQuery):
         )
         return
     
-    # Добавляем пользователя в CantFree
-    add_result = add_to_cantfree(user_tg_id, user_username)
+    # Добавляем пользователя в CantFree (локально)
+    add_result = await add_to_cantfree_local(user_tg_id, user_username)
     
     if add_result.get("success"):
         # Создаем пробную подписку на 3 дня
