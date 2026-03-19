@@ -40,15 +40,6 @@ class Price(Base):
     time = Column(Integer)
     price = Column(Integer)
 
-class TrialSubscription(Base):
-    __tablename__ = "trial_subscriptions"
-    id = Column(Integer, primary_key=True)
-    user_id = Column(Integer)
-    username = Column(String)
-    start_date = Column(String)  # DD.MM.YYYY
-    end_date = Column(String)    # DD.MM.YYYY
-    is_active = Column(Integer, default=1)  # 1 = active, 0 = inactive
-
 class CantFree(Base):
     __tablename__ = "cant_free"
     id = Column(Integer, primary_key=True)
@@ -284,93 +275,9 @@ async def add_to_cantfree_local(tg_id, username):
         await session.refresh(new_user)
         return {"success": True, "message": "User added to CantFree"}
 
-# Асинхронная функция для создания пробной подписки (локальная)
-async def create_trial_subscription(tg_id, username):
-    """Создает пробную подписку в локальной базе данных"""
-    async with AsyncSessionLocal() as session:
-        # Проверяем есть ли уже активная пробная подписка
-        result = await session.execute(
-            select(TrialSubscription).filter(
-                TrialSubscription.user_id == tg_id,
-                TrialSubscription.is_active == 1
-            )
-        )
-        existing_trial = result.scalar_one_or_none()
-        
-        if existing_trial:
-            return {"success": False, "message": "Trial already exists"}
-        
-        # Создаем новую пробную подписку
-        current_time = datetime.datetime.now()
-        end_time = current_time + datetime.timedelta(days=3)
-        
-        new_trial = TrialSubscription(
-            user_id=tg_id,
-            username=username or f"user_{tg_id}",
-            start_date=current_time.strftime("%d.%m.%Y"),
-            end_date=end_time.strftime("%d.%m.%Y"),
-            is_active=1
-        )
-        
-        session.add(new_trial)
-        await session.commit()
-        await session.refresh(new_trial)
-        
-        return {
-            "success": True,
-            "end_date": end_time.strftime("%d.%m.%Y"),
-            "trial": new_trial
-        }
-
-# Асинхронная функция для проверки пробной подписки
-async def get_trial_subscription(tg_id):
-    """Получает информацию о пробной подписке пользователя"""
-    async with AsyncSessionLocal() as session:
-        result = await session.execute(
-            select(TrialSubscription).filter(
-                TrialSubscription.user_id == tg_id,
-                TrialSubscription.is_active == 1
-            )
-        )
-        trial = result.scalar_one_or_none()
-        
-        if not trial:
-            return {"exists": False}
-        
-        # Проверяем не истекла ли подписка
-        try:
-            end_date = datetime.datetime.strptime(trial.end_date, "%d.%m.%Y")
-            current_date = datetime.datetime.now()
-            
-            if current_date > end_date:
-                # Деактивируем истекшую подписку
-                trial.is_active = 0
-                await session.commit()
-                return {"exists": False, "expired": True}
-            
-            return {
-                "exists": True,
-                "end_date": trial.end_date,
-                "days_left": (end_date - current_date).days + 1
-            }
-        except ValueError:
-            return {"exists": False, "error": "Invalid date format"}
-
 # Асинхронная функция для получения информации о подписке по TG ID
 async def get_subscription_info(tg_id: int):
-    # Сначала проверяем локальную пробную подписку
-    trial_info = await get_trial_subscription(tg_id)
-    if trial_info.get("exists"):
-        days_left = trial_info.get("days_left", 0)
-        return (
-            f"<tg-emoji emoji-id='5416081784641168838'>✅</tg-emoji> <b>Пробная подписка активна</b>\n\n"
-            f"<tg-emoji emoji-id='5440621591387980068'>⏰</tg-emoji> Истекает: {trial_info['end_date']}\n"
-            f"<tg-emoji emoji-id='5375338737028841420'>💾</tg-emoji> Лимит: Безлимитный\n"
-            f"<tg-emoji emoji-id='5296369303661067030'>🎯</tg-emoji> Осталось дней: {days_left}",
-            "has_trial"
-        )
-    
-    # Если нет пробной подписки, проверяем основную подписку через API
+    # Проверяем основную подписку через API
     try:
         result = getSubById(tg_id)
 
@@ -426,13 +333,6 @@ async def subscription_callback(callback: types.CallbackQuery):
             )
         else:
             subscription_keyboard = None
-    elif status == "has_trial":
-        # Для пробной подписки показываем информацию без кнопки использования
-        subscription_keyboard = InlineKeyboardMarkup(
-            inline_keyboard=[
-                [InlineKeyboardButton(text="Купить подписку", callback_data="buy_subscription", style="primary", icon_custom_emoji_id='5271604874419647061')]
-            ]
-        )
     elif status == "no_subscription":
         # Проверяем есть ли пользователь в CantFree (локально)
         cantfree_result = await check_cantfree_local(user_tg_id)
@@ -516,15 +416,19 @@ async def trial_period_callback(callback: types.CallbackQuery):
         )
         return
     
-    # Добавляем клиента в CantFree (локально)
+    # Добавляем пользователя в CantFree (локально)
     add_result = await add_to_cantfree_local(user_tg_id, user_username)
     
     if add_result.get("success"):
-        # Создаем пробную подписку на 3 дня (локально)
-        trial_result = await create_trial_subscription(user_tg_id, user_username)
+        # Создаем пробную подписку на 3 дня через API
+        current_time = datetime.datetime.now()
+        end_time = current_time + datetime.timedelta(days=3)
+        end_date_str = end_time.strftime("%d.%m.%Y")
         
-        if trial_result.get("success"):
-            end_date_str = trial_result["end_date"]
+        # Добавляем клиента в систему с пробной подпиской через API
+        try:
+            api_date = end_time.strftime("%d.%m.%Y")
+            client_result = add_client(21, f"trial_user_{user_tg_id}", user_tg_id, api_date)
             
             await callback.message.answer(
                 "<tg-emoji emoji-id='5416081784641168838'>✅</tg-emoji> <b>Пробный период активирован!</b>\n\n"
@@ -544,12 +448,14 @@ async def trial_period_callback(callback: types.CallbackQuery):
                 ),
                 parse_mode=ParseMode.HTML
             )
-        else:
+            
+        except Exception as e:
             await callback.message.answer(
                 "<tg-emoji emoji-id='5411225014148014586'>❌</tg-emoji> <b>Ошибка активации</b>\n\n"
-                "Не удалось создать пробную подписку. Возможно, вы уже использовали пробный период.",
+                "Не удалось создать пробную подписку. Пожалуйста, обратитесь в поддержку.",
                 parse_mode=ParseMode.HTML
             )
+            print(f"Error adding trial client: {e}")
     else:
         await callback.message.answer(
             "<tg-emoji emoji-id='5411225014148014586'>❌</tg-emoji> <b>Ошибка активации</b>\n\n"
