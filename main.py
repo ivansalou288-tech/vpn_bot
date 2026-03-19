@@ -150,16 +150,18 @@ def is_admin(user_id: int) -> bool:
 subscription_btn = InlineKeyboardButton(text="Подписка", callback_data="subscription", style="primary", icon_custom_emoji_id='5296369303661067030')
 contact_btn = InlineKeyboardButton(text="Связь", callback_data="contact", style="primary", icon_custom_emoji_id='5443038326535759644')
 info_btn = InlineKeyboardButton(text="Информация", callback_data="info", style="primary", icon_custom_emoji_id='5282843764451195532')
+instruction_btn = InlineKeyboardButton(text="Инструкция и приложение", url = '', style="success", icon_custom_emoji_id='5282843764451195532')
+app_btn = InlineKeyboardButton(text="Приложение", callback_data="app", style="primary")
 buy_subscription_btn = InlineKeyboardButton(text="Купить подписку", callback_data="buy_subscription", style="primary", icon_custom_emoji_id='5271604874419647061')
 admin_btn = InlineKeyboardButton(text="⚙️ Админ панель", callback_data="admin_panel", style="secondary")
 
 # Создаем inline клавиатуру (кнопки в разных строках)
 keyboard = InlineKeyboardMarkup(
     inline_keyboard=[
-        [subscription_btn],      # Первая строка
-        # [buy_subscription_btn], # Вторая строка
-        [contact_btn],          # Третья строка  
-        [info_btn]              # Четвертая строка
+        [subscription_btn],      # Первая строка                
+        [contact_btn],          # Вторая строка  
+        [info_btn],             # Третья строка
+        [instruction_btn]       # Четвертая строка
     ]
 )
 
@@ -641,6 +643,16 @@ async def info_callback(callback: types.CallbackQuery):
         f"{info_text}",
         parse_mode=ParseMode.HTML
     )
+
+@router.callback_query(lambda callback: callback.data == "instruction")
+async def instruction_callback(callback: types.CallbackQuery):
+    await callback.answer()
+    # Пока ничего не делаем по нажатию
+
+@router.callback_query(lambda callback: callback.data == "app")
+async def app_callback(callback: types.CallbackQuery):
+    await callback.answer()
+    # Пока ничего не делаем по нажатию
 
 @router.callback_query(lambda callback: callback.data == "admin_panel")
 async def admin_panel_callback(callback: types.CallbackQuery):
