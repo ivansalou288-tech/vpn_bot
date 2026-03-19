@@ -150,7 +150,7 @@ def is_admin(user_id: int) -> bool:
 subscription_btn = InlineKeyboardButton(text="Подписка", callback_data="subscription", style="primary", icon_custom_emoji_id='5296369303661067030')
 contact_btn = InlineKeyboardButton(text="Связь", callback_data="contact", style="primary", icon_custom_emoji_id='5443038326535759644')
 info_btn = InlineKeyboardButton(text="Информация", callback_data="info", style="primary", icon_custom_emoji_id='5282843764451195532')
-instruction_btn = InlineKeyboardButton(text="Инструкция и приложение", url = '', style="success", icon_custom_emoji_id='5282843764451195532')
+instruction_btn = InlineKeyboardButton(text="Инструкция и приложение", url = 'https://ezh-dev.ru/vpn_bot/index.html', style="success", icon_custom_emoji_id='5282843764451195532')
 app_btn = InlineKeyboardButton(text="Приложение", callback_data="app", style="primary")
 buy_subscription_btn = InlineKeyboardButton(text="Купить подписку", callback_data="buy_subscription", style="primary", icon_custom_emoji_id='5271604874419647061')
 admin_btn = InlineKeyboardButton(text="⚙️ Админ панель", callback_data="admin_panel", style="secondary")
