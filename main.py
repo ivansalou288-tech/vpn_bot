@@ -710,7 +710,7 @@ async def renew_subscription_callback(callback: types.CallbackQuery):
                 [InlineKeyboardButton(text="3 месяца - 500₽", callback_data="renew_select_3_500", style="primary")],
                 [InlineKeyboardButton(text="6 месяцев - 900₽", callback_data="renew_select_6_900", style="primary")],
                 [InlineKeyboardButton(text="12 месяцев - 1500₽", callback_data="renew_select_12_1500", style="primary")],
-                [InlineKeyboardButton(text="Назад", callback_data="subscription", style="secondary")]
+                [InlineKeyboardButton(text="Назад", callback_data="subscription", style="primary")]
             ]
         ),
         parse_mode=ParseMode.HTML
@@ -736,7 +736,7 @@ async def renew_select_callback(callback: types.CallbackQuery):
         reply_markup=InlineKeyboardMarkup(
             inline_keyboard=[
                 [InlineKeyboardButton(text="✅ Я оплатил(а)", callback_data=f"renew_confirm_{time_months}_{price_rubles}", style="primary")],
-                [InlineKeyboardButton(text="Назад", callback_data="renew_subscription", style="secondary")]
+                [InlineKeyboardButton(text="Назад", callback_data="renew_subscription", style="primary")]
             ]
         ),
         parse_mode=ParseMode.HTML
@@ -765,7 +765,7 @@ async def renew_confirm_callback(callback: types.CallbackQuery):
         reply_markup=InlineKeyboardMarkup(
             inline_keyboard=[
                 [InlineKeyboardButton(text="✅ Подтвердить", callback_data=f"renew_approve_{user_tg_id}_{time_months}_{price_rubles}", style="primary")],
-                [InlineKeyboardButton(text="❌ Отклонить", callback_data=f"renew_reject_{user_tg_id}", style="secondary")]
+                [InlineKeyboardButton(text="❌ Отклонить", callback_data=f"renew_reject_{user_tg_id}", style="primary")]
             ]
         ),
         parse_mode=ParseMode.HTML
