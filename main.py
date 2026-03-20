@@ -369,7 +369,9 @@ async def subscription_callback(callback: types.CallbackQuery):
             subscription_keyboard = InlineKeyboardMarkup(
                 inline_keyboard=[
                     [InlineKeyboardButton(text="Использовать", url=f"http://ezh-dev.ru:2096/sub/{sub_id}", callback_data=f"use_sub_{sub_id}", style="primary", icon_custom_emoji_id='5271604874419647061')],
-                    [InlineKeyboardButton(text="Продлить подписку", callback_data="renew_subscription", style="success", icon_custom_emoji_id='5406756500108501710')]
+                    [InlineKeyboardButton(text="Продлить подписку", callback_data="renew_subscription", style="success", icon_custom_emoji_id='5231012545799666522')],
+                    instruction_btn,
+                    [InlineKeyboardButton(text="Назад", callback_data="main_menu", style="secondary")]
                 ]
             )
         else:
@@ -814,16 +816,7 @@ async def renew_paid_notify_callback(callback: types.CallbackQuery):
         parse_mode=ParseMode.HTML
     )
     
-    await callback.message.answer(
-        "✅ Запрос на продление отправлен администратору.\n"
-        "Ожидайте подтверждения.",
-        reply_markup=InlineKeyboardMarkup(
-            inline_keyboard=[
-                [InlineKeyboardButton(text="Моя подписка", callback_data="subscription", style="primary")]
-            ]
-        ),
-        parse_mode=ParseMode.HTML
-    )
+    await callback.message.edit_text(f'<tg-emoji emoji-id="5386367538735104399">✅</tg-emoji> Ожидайте подтверждения оплаты от оператора', parse_mode=ParseMode.HTML)
 
 @router.callback_query(lambda callback: callback.data.startswith("renew_approve_"))
 async def renew_approve_callback(callback: types.CallbackQuery):
