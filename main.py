@@ -593,9 +593,13 @@ async def broadcast_command(message: types.Message):
     if not is_admin(message.from_user.id):
         await message.answer("⛔ У вас нет прав для выполнения этой команды.")
         return
-    
+    clean_text = message.html_text  # Получаем текст с HTML-тегами
+                    
+                    # Исправляем неправильные теги <tg-emoji> на правильные
+                    # Заменяем emoji_id на emoji-id
+    clean_text = clean_text.replace('emoji_id=', 'emoji-id=')
     # Проверяем, есть ли текст после команды
-    args = message.text.split(maxsplit=1)
+    args = clean_text.split(maxsplit=1)
     if len(args) < 2:
         await message.answer(
             "📢 <b>Рассылка сообщений</b>\n\n"
@@ -1082,18 +1086,10 @@ async def pay_stars_callback(callback: types.CallbackQuery):
     time_months = int(parts[2])  # "pay_stars_1_200" -> parts[2] = "1"
     price_rubles = int(parts[3])  # "pay_stars_1_200" -> parts[3] = "200"
     
-    if callback.from_user.id != 8489038592:
-        await callback.message.answer(
-            "<tg-emoji emoji-id='5416081784641168838'>🚧</tg-emoji> <b>В разработке</b>\n\n"
-            "Оплата звездами временно недоступна.\n"
-            "Мы работаем над добавлением этой функции.\n\n"
-            "Пожалуйста, воспользуйтесь оплатой картой.",
-            parse_mode=ParseMode.HTML
-        )
-        return
+
      
     # Формируем цену в звездах (пример: 1 XTR = 1 звезда)
-    stars_amount = 5  # Фиксированная цена в звездах
+    stars_amount = price_rubles  # Фиксированная цена в звездах
     
     prices = [LabeledPrice(label="XTR", amount=stars_amount)]  
     await callback.message.answer_invoice(  
@@ -1116,18 +1112,10 @@ async def renew_pay_stars_callback(callback: types.CallbackQuery):
     time_months = int(parts[3])  # "renew_pay_stars_1_200" -> parts[3] = "1"
     price_rubles = int(parts[4])  # "renew_pay_stars_1_200" -> parts[4] = "200"
     
-    if callback.from_user.id != 8489038592:
-        await callback.message.answer(
-            "<tg-emoji emoji-id='5416081784641168838'>🚧</tg-emoji> <b>В разработке</b>\n\n"
-            "Оплата звездами временно недоступна.\n"
-            "Мы работаем над добавлением этой функции.\n\n"
-            "Пожалуйста, воспользуйтесь оплатой картой.",
-            parse_mode=ParseMode.HTML
-        )
-        return
+
     
     # Формируем цену в звездах
-    stars_amount = 5  # Фиксированная цена в звездах
+    stars_amount = price_rubles # Фиксированная цена в звездах
     
     prices = [LabeledPrice(label="XTR", amount=stars_amount)]  
     await callback.message.answer_invoice(  
