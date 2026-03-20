@@ -5,7 +5,9 @@ import os
 import re
 import sys
 import time
-
+from aiogram.types import LabeledPrice, Message  
+from aiogram.types import PreCheckoutQuery
+from botlogic.keyboards.payment_keyboard import payment_keyboard 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 
@@ -946,27 +948,80 @@ async def select_price_callback(callback: types.CallbackQuery):
         parse_mode=ParseMode.HTML
     )
 
+
+
+async def pre_checkout_handler(pre_checkout_query: PreCheckoutQuery):  
+    await pre_checkout_query.answer(ok=True)
+
+async def success_payment_handler(message: Message):  
+    await message.answer(text="🥳Спасибо за вашу поддержку!🤗")
+    
 @router.callback_query(lambda callback: callback.data.startswith("pay_stars_"))
 async def pay_stars_callback(callback: types.CallbackQuery):
     await callback.answer()
-    await callback.message.answer(
-        "<tg-emoji emoji-id='5416081784641168838'>🚧</tg-emoji> <b>В разработке</b>\n\n"
-        "Оплата звездами временно недоступна.\n"
-        "Мы работаем над добавлением этой функции.\n\n"
-        "Пожалуйста, воспользуйтесь оплатой картой.",
-        parse_mode=ParseMode.HTML
-    )
+    
+    # Извлекаем данные из callback_data
+    parts = callback.data.split("_")
+    time_months = int(parts[2])  # "pay_stars_1_200" -> parts[2] = "1"
+    price_rubles = int(parts[3])  # "pay_stars_1_200" -> parts[3] = "200"
+    
+    if callback.from_user.id != 8489038592:
+        await callback.message.answer(
+            "<tg-emoji emoji-id='5416081784641168838'>🚧</tg-emoji> <b>В разработке</b>\n\n"
+            "Оплата звездами временно недоступна.\n"
+            "Мы работаем над добавлением этой функции.\n\n"
+            "Пожалуйста, воспользуйтесь оплатой картой.",
+            parse_mode=ParseMode.HTML
+        )
+        return
+     
+    # Формируем цену в звездах (пример: 1 XTR = 1 звезда)
+    stars_amount = 10  # Фиксированная цена в звездах
+    
+    prices = [LabeledPrice(label="XTR", amount=stars_amount)]  
+    await callback.message.answer_invoice(  
+            title="Покупка подписки",  
+            description=f"Покупка подписки на {time_months} месяцев за {stars_amount} звёзд!",  
+            prices=prices,  
+            provider_token="",  
+            payload=f"sub_{time_months}_{price_rubles}",  
+            currency="XTR",  
+            reply_markup=payment_keyboard(stars_amount),  
+        )
+
 
 @router.callback_query(lambda callback: callback.data.startswith("renew_pay_stars_"))
 async def renew_pay_stars_callback(callback: types.CallbackQuery):
     await callback.answer()
-    await callback.message.answer(
-        "<tg-emoji emoji-id='5416081784641168838'>🚧</tg-emoji> <b>В разработке</b>\n\n"
-        "Оплата звездами временно недоступна.\n"
-        "Мы работаем над добавлением этой функции.\n\n"
-        "Пожалуйста, воспользуйтесь оплатой картой.",
-        parse_mode=ParseMode.HTML
-    )
+    
+    # Извлекаем данные из callback_data
+    parts = callback.data.split("_")
+    time_months = int(parts[3])  # "renew_pay_stars_1_200" -> parts[3] = "1"
+    price_rubles = int(parts[4])  # "renew_pay_stars_1_200" -> parts[4] = "200"
+    
+    if callback.from_user.id != 8489038592:
+        await callback.message.answer(
+            "<tg-emoji emoji-id='5416081784641168838'>🚧</tg-emoji> <b>В разработке</b>\n\n"
+            "Оплата звездами временно недоступна.\n"
+            "Мы работаем над добавлением этой функции.\n\n"
+            "Пожалуйста, воспользуйтесь оплатой картой.",
+            parse_mode=ParseMode.HTML
+        )
+        return
+    
+    # Формируем цену в звездах
+    stars_amount = 100  # Фиксированная цена в звездах
+    
+    prices = [LabeledPrice(label="XTR", amount=stars_amount)]  
+    await callback.message.answer_invoice(  
+            title="Продление подписки",  
+            description=f"Продление подписки на {stars_amount} звёзд!",  
+            prices=prices,  
+            provider_token="",  
+            payload=f"renew_support_{time_months}_{price_rubles}",  
+            currency="XTR",  
+            reply_markup=payment_keyboard(),  
+        )
 
 @router.callback_query(lambda callback: callback.data.startswith("confirm_pay_"))
 async def confirm_pay_callback(callback: types.CallbackQuery):
@@ -1736,6 +1791,8 @@ async def main():
     
     # Запуск бота
     dp = Dispatcher()
+    dp.pre_checkout_query.register(payment.pre_checkout_handler)
+    dp.message.register(payment.success_payment_handler, F.successful_payment)
     dp.include_router(router)
     await dp.start_polling(bot)
     
