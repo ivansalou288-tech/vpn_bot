@@ -494,8 +494,7 @@ keyboard = InlineKeyboardMarkup(
         [contact_btn],          # Вторая строка  
         [info_btn],             # Третья строка
         [instruction_btn],      # Четвертая строка
-        [referral_btn],        # Пятая строка - реферальная программа
-        [buy_subscription_btn]  # Шестая строка
+        [referral_btn]        # Пятая строка - реферальная программа
     ]
 )
 
@@ -1098,7 +1097,7 @@ async def renew_pay_stars_callback(callback: types.CallbackQuery):
     prices = [LabeledPrice(label="XTR", amount=stars_amount)]  
     await callback.message.answer_invoice(  
             title="Продление подписки",  
-            description=f"Продление подписки на {stars_amount} звёзд!",  
+            description=f"Продление подписки на {time_months} месяцев за {stars_amount} звёзд!",  
             prices=prices,  
             provider_token="",  
             payload=f"sub_{time_months}_{price_rubles}",  
@@ -1516,6 +1515,17 @@ async def renew_reject_callback(callback: types.CallbackQuery):
         f"👤 Пользователь ID: {user_id}\n\n"
         "Запрос на продление подписки отклонен.",
         parse_mode=ParseMode.HTML
+    )
+
+@router.callback_query(lambda callback: callback.data == "main_menu")
+async def main_menu_callback(callback: types.CallbackQuery):
+    await callback.answer()
+    await callback.message.delete()
+    
+    await callback.message.answer(
+        "Привет! Я бот для управления VPN.\n\n"
+        "Выберите одну из опций ниже:",
+        reply_markup=keyboard
     )
 
 @router.callback_query(lambda callback: callback.data == "admin_panel")
