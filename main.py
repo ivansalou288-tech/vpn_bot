@@ -743,7 +743,7 @@ async def renew_select_callback(callback: types.CallbackQuery):
     )
     
     await callback.message.answer(
-        f"<tg-emoji emoji-id='5251203410396458957'>�</tg-emoji> <b>Продление подписки</b>\n\n"
+        f"<tg-emoji emoji-id='5251203410396458957'>💳</tg-emoji> <b>Продление подписки</b>\n\n"
         f"<tg-emoji emoji-id='5440621591387980068'>⏰</tg-emoji> Период продления: {months_text}\n"
         f"<tg-emoji emoji-id='5417924076503062111'>💰</tg-emoji> Цена: {price_rubles}₽\n\n"
         "Нажмите 'Оплатить' для продолжения:",
@@ -765,7 +765,7 @@ async def renew_confirm_callback(callback: types.CallbackQuery):
     months_text = "год" if time_months == 12 else f"{time_months} месяц{'а' if time_months > 1 and time_months < 5 else 'ев'}"
     
     await callback.message.answer(
-        f"<tg-emoji emoji-id='5251203410396458957'>�</tg-emoji> <b>Информация об оплате продления</b>\n\n"
+        f"<tg-emoji emoji-id='5251203410396458957'>💳</tg-emoji> <b>Информация об оплате продления</b>\n\n"
         f"<tg-emoji emoji-id='5440621591387980068'>⏰</tg-emoji> Период продления: {months_text}\n"
         f"<tg-emoji emoji-id='5417924076503062111'>💰</tg-emoji> Цена: {price_rubles}₽\n\n"
         f"<tg-emoji emoji-id='5424972470023104089'>💳</tg-emoji> РЕКВИЗИТЫ <tg-emoji emoji-id='5424972470023104089'>💳</tg-emoji>\n"
