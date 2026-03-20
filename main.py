@@ -264,58 +264,68 @@ referral_bonus_given = {}  # {tg_id: True}
 async def handle_referral_bonus(user_id: int, referrer_id: int):
     """Обрабатывает реферальный бонус"""
     try:
-        # Проверяем, не получал ли пользователь уже бонус
-        if user_id in referral_bonus_given:
-            print(f"User {user_id} already received referral bonus")
+        # Проверяем, не получал ли реферер уже бонус за этого пользователя
+        if referrer_id in referral_bonus_given:
+            print(f"Referrer {referrer_id} already received referral bonus")
             return
         
         # Проверяем подписку реферала
         subscription_info, status = await get_subscription_info(referrer_id)
         
         if status == "has_subscription":
-            # У реферала есть подписка - добавляем 2 дня к подписке нового пользователя
-            await add_referral_days_to_user(user_id, 2)
-            
-            # Отправляем уведомление новому пользователю
-            await bot.send_message(
-                user_id,
-                f"<tg-emoji emoji-id='5416081784641168838'>🎉</tg-emoji> <b>Поздравляем! Вы получили бонус!</b>\n\n"
-                f"Вы перешли по реферальной ссылке пользователя.\n"
-                f"<tg-emoji emoji-id='5440621591387980068'>🎁</tg-emoji> Вам начислено: <b>2 дня</b> бесплатной подписки!\n\n"
-                "Спасибо, что выбрали наш сервис! 🚀",
-                parse_mode=ParseMode.HTML
-            )
+            # У реферала есть подписка - добавляем 2 дня к подписке реферала
+            await add_referral_days_to_user(referrer_id, 2)
             
             # Отправляем уведомление рефералу
             await bot.send_message(
                 referrer_id,
-                f"<tg-emoji emoji-id='5416081784641168838'>🎉</tg-emoji> <b>Поздравляем! Новый реферал!</b>\n\n"
+                f"<tg-emoji emoji-id='5416081784641168838'>🎉</tg-emoji> <b>Поздравляем! Вы получили бонус!</b>\n\n"
                 f"По вашей ссылке зарегистрировался новый пользователь.\n"
-                f"<tg-emoji emoji-id='5417924076503062111'>💰</tg-emoji> Ваш бонус скоро будет начислен!\n\n"
+                f"<tg-emoji emoji-id='5440621591387980068'>🎁</tg-emoji> Вам начислено: <b>2 дня</b> к подписке!\n\n"
                 "Спасибо за привлечение новых пользователей! 🚀",
                 parse_mode=ParseMode.HTML
             )
             
+            # Отправляем уведомление новому пользователю
+            await bot.send_message(
+                user_id,
+                f"<tg-emoji emoji-id='5416081784641168838'>🎉</tg-emoji> <b>Добро пожаловать!</b>\n\n"
+                f"Вы перешли по реферальной ссылке.\n"
+                f"<tg-emoji emoji-id='5417924076503062111'>💰</tg-emoji> Ваш реферер получил бонус за вашу регистрацию!\n\n"
+                "Спасибо, что выбрали наш сервис! 🚀",
+                parse_mode=ParseMode.HTML
+            )
+            
         else:
-            # У реферала нет подписки - даем подписку на 2 дня новому пользователю
-            await add_referral_days_to_user(user_id, 2)
+            # У реферала нет подписки - даем подписку на 2 дня рефералу
+            await add_referral_days_to_user(referrer_id, 2)
+            
+            # Отправляем уведомление рефералу
+            await bot.send_message(
+                referrer_id,
+                f"<tg-emoji emoji-id='5416081784641168838'>🎉</tg-emoji> <b>Поздравляем! Вы получили бонус!</b>\n\n"
+                f"По вашей ссылке зарегистрировался новый пользователь.\n"
+                f"<tg-emoji emoji-id='5440621591387980068'>🎁</tg-emoji> Вам начислена подписка на <b>2 дня</b>!\n\n"
+                "Спасибо за привлечение новых пользователей! 🚀",
+                parse_mode=ParseMode.HTML
+            )
             
             # Отправляем уведомление новому пользователю
             await bot.send_message(
                 user_id,
-                f"<tg-emoji emoji-id='5416081784641168838'>🎉</tg-emoji> <b>Поздравляем! Вы получили бонус!</b>\n\n"
+                f"<tg-emoji emoji-id='5416081784641168838'>🎉</tg-emoji> <b>Добро пожаловать!</b>\n\n"
                 f"Вы перешли по реферальной ссылке.\n"
-                f"<tg-emoji emoji-id='5440621591387980068'>🎁</tg-emoji> Вам начислена подписка на <b>2 дня</b>!\n\n"
+                f"<tg-emoji emoji-id='5417924076503062111'>💰</tg-emoji> Ваш реферер получил бонус за вашу регистрацию!\n\n"
                 "Спасибо, что выбрали наш сервис! 🚀",
                 parse_mode=ParseMode.HTML
             )
         
-        # Помечаем, что бонус выдан
-        referral_bonus_given[user_id] = True
-        print(f"Referral bonus given to user {user_id} from referrer {referrer_id}")
+        # Помечаем, что бонус выдан рефереру
+        referral_bonus_given[referrer_id] = True
+        print(f"Referral bonus given to referrer {referrer_id} for user {user_id}")
         
     except Exception as e:
-        print(f"Error handling referral bonus for user {user_id}: {e}")
+        print(f"Error handling referral bonus for referrer {referrer_id}: {e}")
 
 async def add_referral_days_to_user(user_id: int, days: int):
     """Добавляет дни к подписке пользователя или создает новую подписку"""
@@ -570,8 +580,9 @@ async def referral_command(message: types.Message):
         f"<tg-emoji emoji-id='5416081784641168838'>🔗</tg-emoji> <b>Ваша реферальная ссылка</b>\n\n"
         f"<code>{referral_link}</code>\n\n"
         f"<tg-emoji emoji-id='5440621591387980068'>🎁</tg-emoji> <b>Условия бонуса:</b>\n"
-        f"• Если у вас есть подписка - рефералу добавится <b>2 дня</b> к подписке\n"
-        f"• Если у вас нет подписки - рефералу дается подписка на <b>2 дня</b>\n\n"
+        f"• Если у вас есть подписка - вам добавится <b>2 дня</b> к подписке\n"
+        f"• Если у вас нет подписки - вам дается подписка на <b>2 дня</b>\n\n"
+        "Бонус начисляется ВАМ за каждого нового пользователя, перешедшего по вашей ссылке!\n"
         "Делитесь ссылкой и получайте бонусы! 🚀",
         parse_mode=ParseMode.HTML
     )
@@ -1141,8 +1152,9 @@ async def referral_callback(callback: types.CallbackQuery):
         f"<tg-emoji emoji-id='5416081784641168838'>🔗</tg-emoji> <b>Ваша реферальная ссылка</b>\n\n"
         f"<code>{referral_link}</code>\n\n"
         f"<tg-emoji emoji-id='5440621591387980068'>🎁</tg-emoji> <b>Условия бонуса:</b>\n"
-        f"• Если у вас есть подписка - рефералу добавится <b>2 дня</b> к подписке\n"
-        f"• Если у вас нет подписки - рефералу дается подписка на <b>2 дня</b>\n\n"
+        f"• Если у вас есть подписка - вам добавится <b>2 дня</b> к подписке\n"
+        f"• Если у вас нет подписки - вам дается подписка на <b>2 дня</b>\n\n"
+        "Бонус начисляется ВАМ за каждого нового пользователя, перешедшего по вашей ссылке!\n"
         "Делитесь ссылкой и получайте бонусы! 🚀",
         parse_mode=ParseMode.HTML
     )
