@@ -6,6 +6,9 @@ import re
 import sys
 import time
 
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.interval import IntervalTrigger
+
 from sqlalchemy import create_engine, Column, Integer, String, select
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from sqlalchemy.orm import Session, sessionmaker, declarative_base
@@ -143,6 +146,99 @@ TOKEN = "8358697144:AAGppsqXjG9S08nGLUpghL-jUfTz9H4gj58"
 
 bot = Bot(token=TOKEN)
 router = Router()
+
+# Инициализация планировщика
+scheduler = AsyncIOScheduler()
+
+async def check_subscription_expirations():
+    """Проверяет истечение подписок и отправляет напоминания"""
+    try:
+        # Получаем всех клиентов
+        clients_data = get_clients()
+        
+        if not clients_data.get('success'):
+            print("Failed to get clients for expiration check")
+            return
+        
+        inbounds = clients_data.get('obj', [])
+        current_time = datetime.datetime.now()
+        
+        for inbound in inbounds:
+            if 'settings' in inbound:
+                settings = inbound['settings']
+                
+                if isinstance(settings, str):
+                    try:
+                        settings = json.loads(settings)
+                    except json.JSONDecodeError:
+                        continue
+                
+                if 'clients' in settings:
+                    clients = settings['clients']
+                    
+                    for client in clients:
+                        tg_id = client.get('tgId')
+                        expiry_time = client.get('expiryTime')
+                        
+                        if not tg_id or not expiry_time:
+                            continue
+                        
+                        # Конвертируем время из миллисекунд в datetime
+                        expiry_date = datetime.datetime.fromtimestamp(expiry_time / 1000)
+                        time_left = expiry_date - current_time
+                        
+                        # Проверяем разные интервалы времени
+                        if datetime.timedelta(hours=22) <= time_left <= datetime.timedelta(hours=25):
+                            # Осталось 1 день (22-25 часов)
+                            await send_expiration_reminder(tg_id, "day", expiry_date)
+                            
+                        elif datetime.timedelta(minutes=30) <= time_left <= datetime.timedelta(hours=2):
+                            # Осталось 1 час (30 минут - 2 часа)
+                            await send_expiration_reminder(tg_id, "hour", expiry_date)
+    
+    except Exception as e:
+        print(f"Error checking subscription expirations: {e}")
+
+async def send_expiration_reminder(tg_id: int, reminder_type: str, expiry_date: datetime.datetime):
+    """Отправляет напоминание об окончании подписки"""
+    try:
+        if reminder_type == "day":
+            message_text = (
+                f"<tg-emoji emoji-id='5440621591387980068'>⏰</tg-emoji> <b>Напоминание об окончании подписки</b>\n\n"
+                f"Ваша подписка заканчивается завтра!\n"
+                f"<tg-emoji emoji-id='5440621591387980068'>📅</tg-emoji> Дата окончания: {expiry_date.strftime('%d.%m.%Y')}\n\n"
+                "Не забудьте продлить подписку, чтобы избежать перерывов в работе VPN.\n\n"
+                "Для продления нажмите кнопку ниже:"
+            )
+            reply_markup = InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [InlineKeyboardButton(text="Продлить подписку", callback_data="renew_subscription", style="primary")]
+                ]
+            )
+            
+        elif reminder_type == "hour":
+            message_text = (
+                f"<tg-emoji emoji-id='5440621591387980068'>⏰</tg-emoji> <b>СРОЧНО! Подписка заканчивается!</b>\n\n"
+                f"Ваша подписка заканчивается в течение часа!\n"
+                f"<tg-emoji emoji-id='5440621591387980068'>📅</tg-emoji> Дата окончания: {expiry_date.strftime('%d.%m.%Y %H:%M')}\n\n"
+                "Продлите подписку прямо сейчас, чтобы VPN продолжил работать!"
+            )
+            reply_markup = InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [InlineKeyboardButton(text="Продлить подписку", callback_data="renew_subscription", style="primary")]
+                ]
+            )
+        
+        await bot.send_message(
+            tg_id, 
+            text=message_text,
+            reply_markup=reply_markup,
+            parse_mode=ParseMode.HTML
+        )
+        print(f"Sent {reminder_type} reminder to user {tg_id}")
+        
+    except Exception as e:
+        print(f"Error sending reminder to user {tg_id}: {e}")
 
 # Проверка на админа
 def is_admin(user_id: int) -> bool:
@@ -1216,6 +1312,18 @@ async def handle_admin_messages(message: types.Message):
 async def main():
     await create_tables()
 
+    # Запуск планировщика для проверки подписок
+    scheduler.add_job(
+        check_subscription_expirations,
+        trigger=IntervalTrigger(hours=1),  # Проверка раз в час
+        id='subscription_expiration_check',
+        name='Check subscription expirations',
+        replace_existing=True
+    )
+    
+    # Запускаем планировщик
+    scheduler.start()
+    print("Scheduler started - checking subscription expirations every hour")
     
     # Запуск бота
     dp = Dispatcher()
