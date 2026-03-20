@@ -952,8 +952,92 @@ async def select_price_callback(callback: types.CallbackQuery):
 async def pre_checkout_handler(pre_checkout_query: PreCheckoutQuery):  
     await pre_checkout_query.answer(ok=True)
 
-async def success_payment_handler(message: Message):  
-    await message.answer(text="🥳Спасибо за вашу поддержку!🤗")
+async def success_payment_handler(message: Message):
+    """Обработчик успешной оплаты звездами"""
+    try:
+        # Получаем информацию о платеже
+        payment_info = message.successful_payment
+        payload = payment_info.invoice_payload
+        
+        # Парсим payload
+        parts = payload.split("_")
+        if parts[0] == "sub":
+            time_months = int(parts[1])
+            price_rubles = int(parts[2])
+            
+            # Проверяем, есть ли у пользователя уже подписка
+            subscription_info, status = await get_subscription_info(message.from_user.id)
+            
+            if status == "has_subscription":
+                # У пользователя есть подписка - продлеваем
+                renew_result = renew_subscription(message.from_user.id, time_months)
+                
+                if renew_result.get('success'):
+                    new_expiry = renew_result.get('new_expiry')
+                    end_time = datetime.datetime.fromtimestamp(new_expiry / 1000)
+                    end_date_str = end_time.strftime("%d.%m.%Y")
+                    
+                    await message.answer(
+                        f"<tg-emoji emoji-id='5416081784641168838'>✅</tg-emoji> <b>Подписка продлена!</b>\n\n"
+                        f"<tg-emoji emoji-id='5440621591387980068'>⏰</tg-emoji> Продление на: {time_months} мес.\n"
+                        f"<tg-emoji emoji-id='5417924076503062111'>💰</tg-emoji> Оплачено: {payment_info.total_amount} {payment_info.currency}\n"
+                        f"<tg-emoji emoji-id='5440621591387980068'>📅</tg-emoji> Действует до: {end_date_str}\n\n"
+                        "Подписка успешно продлена! 🎉",
+                        reply_markup=InlineKeyboardMarkup(
+                            inline_keyboard=[
+                                [InlineKeyboardButton(text="Моя подписка", callback_data="subscription", style="primary")]
+                            ]
+                        ),
+                        parse_mode=ParseMode.HTML
+                    )
+                else:
+                    await message.answer(
+                        "❌ Ошибка при продлении подписки. Пожалуйста, свяжитесь с поддержкой.",
+                        parse_mode=ParseMode.HTML
+                    )
+            else:
+                # У пользователя нет подписки - создаем новую
+                current_time = datetime.datetime.now()
+                end_time = current_time + datetime.timedelta(days=time_months * 31)
+                end_timestamp = int(end_time.timestamp() * 1000)
+                
+                # Формируем дату в читаемом формате
+                end_date_str = end_time.strftime("%d.%m.%Y")
+                
+                # Добавляем клиента в систему
+                try:
+                    api_date = end_time.strftime("%d.%m.%Y")
+                    result = add_client(21, f"user_{message.from_user.id}", message.from_user.id, api_date)
+                    print(f"Client added via stars payment: {result}")
+                    
+                    # Отправляем подтверждение пользователю
+                    await message.answer(
+                        f"<tg-emoji emoji-id='5416081784641168838'>✅</tg-emoji> <b>Оплата успешно завершена!</b>\n\n"
+                        f"<tg-emoji emoji-id='5440621591387980068'>⏰</tg-emoji> Период: {time_months} мес.\n"
+                        f"<tg-emoji emoji-id='5417924076503062111'>💰</tg-emoji> Оплачено: {payment_info.total_amount} {payment_info.currency}\n"
+                        f"<tg-emoji emoji-id='5440621591387980068'>📅</tg-emoji> Действует до: {end_date_str}\n\n"
+                        "Подписка активирована! 🎉",
+                        reply_markup=InlineKeyboardMarkup(
+                            inline_keyboard=[
+                                [InlineKeyboardButton(text="Моя подписка", callback_data="subscription", style="primary")]
+                            ]
+                        ),
+                        parse_mode=ParseMode.HTML
+                    )
+                    
+                except Exception as e:
+                    print(f"Error adding client via stars payment: {e}")
+                    await message.answer(
+                        "❌ Ошибка при активации подписки. Пожалуйста, свяжитесь с поддержкой.",
+                        parse_mode=ParseMode.HTML
+                    )
+        
+    except Exception as e:
+        print(f"Error processing stars payment: {e}")
+        await message.answer(
+            "❌ Ошибка при обработке платежа. Пожалуйста, свяжитесь с поддержкой.",
+            parse_mode=ParseMode.HTML
+        )
     
 @router.callback_query(lambda callback: callback.data.startswith("pay_stars_"))
 async def pay_stars_callback(callback: types.CallbackQuery):
@@ -975,7 +1059,7 @@ async def pay_stars_callback(callback: types.CallbackQuery):
         return
      
     # Формируем цену в звездах (пример: 1 XTR = 1 звезда)
-    stars_amount = 10  # Фиксированная цена в звездах
+    stars_amount = 5  # Фиксированная цена в звездах
     
     prices = [LabeledPrice(label="XTR", amount=stars_amount)]  
     await callback.message.answer_invoice(  
@@ -1009,7 +1093,7 @@ async def renew_pay_stars_callback(callback: types.CallbackQuery):
         return
     
     # Формируем цену в звездах
-    stars_amount = 100  # Фиксированная цена в звездах
+    stars_amount = 5  # Фиксированная цена в звездах
     
     prices = [LabeledPrice(label="XTR", amount=stars_amount)]  
     await callback.message.answer_invoice(  
@@ -1017,7 +1101,7 @@ async def renew_pay_stars_callback(callback: types.CallbackQuery):
             description=f"Продление подписки на {stars_amount} звёзд!",  
             prices=prices,  
             provider_token="",  
-            payload=f"renew_support_{time_months}_{price_rubles}",  
+            payload=f"sub_{time_months}_{price_rubles}",  
             currency="XTR",  
             reply_markup=payment_keyboard(),  
         )
