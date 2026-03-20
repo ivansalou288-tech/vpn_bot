@@ -589,9 +589,10 @@ async def broadcast_command(message: types.Message):
         await message.answer(
             "📢 <b>Рассылка сообщений</b>\n\n"
             "Использование:\n"
-            "<code>/broadcast Ваше сообщение</code>\n\n"
+            "<code>/notify Ваше сообщение</code>\n\n"
             "Пример:\n"
-            "<code>/broadcast 🔔 Внимание! Проводятся технические работы...</code>",
+            "<code>/notify 🔔 Внимание! Проводятся технические работы...</code>\n\n"
+            "Поддерживаются Telegram эмодзи и HTML-теги.",
             parse_mode=ParseMode.HTML
         )
         return
@@ -1456,10 +1457,10 @@ async def admin_broadcast_callback(callback: types.CallbackQuery):
         await callback.message.answer(
             "📢 <b>Рассылка сообщений</b>\n\n"
             "Используйте команду:\n"
-            "<code>/broadcast Ваше сообщение</code>\n\n"
+            "<code>/notify Ваше сообщение</code>\n\n"
             "Пример:\n"
-            "<code>/broadcast 🔔 Внимание! Проводятся технические работы...</code>\n\n"
-            "Сообщение будет отправлено всем пользователям бота.",
+            "<code>/notify 🔔 Внимание! Проводятся технические работы...</code>\n\n"
+            "Поддерживаются Telegram эмодзи и HTML-теги.",
             parse_mode=ParseMode.HTML
         )
 
