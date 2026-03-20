@@ -3,6 +3,7 @@ import urllib3
 import json
 import random
 import datetime
+import time
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 BASE_URL = 'https://ezh-dev.ru:45618/NDytSmlXITQ2e4MMnc'
 
@@ -226,6 +227,77 @@ def getSubById(telegram_id):
     return {"error": f"No client found with tgId: {telegram_id}"}
     
 
+
+def renew_subscription(tg_id: int, additional_months: int):
+    """Продлевает подписку на указанное количество месяцев"""
+    try:
+        # Получаем текущую информацию о клиенте
+        client_info = getSubById(tg_id)
+        
+        if not client_info.get('success'):
+            return {"error": "Client not found", "details": client_info}
+        
+        current_expiry = client_info['client_info']['expiryTime']
+        current_time = int(time.time() * 1000)
+        
+        # Если текущее время истекло, начинаем от текущего времени
+        if current_expiry == 0:
+            new_expiry = current_time
+        else:
+            new_expiry = current_expiry
+        
+        # Добавляем указанное количество месяцев
+        import datetime
+        additional_time = additional_months * 30 * 24 * 60 * 60 * 1000  # Приблизительно месяцев в миллисекундах
+        new_expiry += additional_time
+        
+        # Получаем inboundId для обновления
+        clients_data = get_clients()
+        inbound_id = None
+        
+        if clients_data.get('success'):
+            inbounds = clients_data.get('obj', [])
+            for inbound in inbounds:
+                if 'settings' in inbound:
+                    settings = inbound['settings']
+                    if isinstance(settings, str):
+                        try:
+                            settings = json.loads(settings)
+                        except json.JSONDecodeError:
+                            continue
+                    
+                    if 'clients' in settings:
+                        clients = settings['clients']
+                        for client in clients:
+                            if str(client.get('tgId')) == str(tg_id):
+                                inbound_id = inbound.get('id')
+                                break
+                    if inbound_id:
+                        break
+        
+        if not inbound_id:
+            return {"error": "Inbound not found"}
+        
+        # Удаляем старого клиента
+        dell_result = dell_client(inbound_id, tg_id)
+        
+        # Создаем нового клиента с обновленным временем
+        username = client_info['client_info']['email'].split('_')[0]
+        new_date = datetime.datetime.fromtimestamp(new_expiry / 1000).strftime('%d.%m.%Y')
+        
+        add_result = add_client(inbound_id, username, tg_id, new_date)
+        
+        return {
+            "success": True,
+            "message": f"Subscription renewed for {additional_months} months",
+            "old_expiry": current_expiry,
+            "new_expiry": new_expiry,
+            "delete_result": dell_result,
+            "add_result": add_result
+        }
+        
+    except Exception as e:
+        return {"error": str(e)}
 
 def convert_timestamp_to_human_readable(timestamp_ms):
     """Конвертирует timestamp в миллисекундах в читаемый формат"""

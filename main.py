@@ -17,7 +17,7 @@ from aiogram.utils.keyboard import InlineKeyboardMarkup, InlineKeyboardButton
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-from api import add_client, getSubById, check_cantfree, add_to_cantfree, dell_client, get_clients
+from api import add_client, getSubById, check_cantfree, add_to_cantfree, dell_client, get_clients, renew_subscription
 
 OPERATOR_CHAT_ID = 1240656726
 
@@ -368,7 +368,8 @@ async def subscription_callback(callback: types.CallbackQuery):
         if is_enabled:
             subscription_keyboard = InlineKeyboardMarkup(
                 inline_keyboard=[
-                    [InlineKeyboardButton(text="Использовать", url=f"http://ezh-dev.ru:2096/sub/{sub_id}", callback_data=f"use_sub_{sub_id}", style="primary", icon_custom_emoji_id='5271604874419647061')]
+                    [InlineKeyboardButton(text="Использовать", url=f"http://ezh-dev.ru:2096/sub/{sub_id}", callback_data=f"use_sub_{sub_id}", style="primary", icon_custom_emoji_id='5271604874419647061')],
+                    [InlineKeyboardButton(text="Продлить подписку", callback_data="renew_subscription", style="success", icon_custom_emoji_id='5406756500108501710')]
                 ]
             )
         else:
@@ -691,6 +692,172 @@ async def instruction_callback(callback: types.CallbackQuery):
 async def app_callback(callback: types.CallbackQuery):
     await callback.answer()
     # Пока ничего не делаем по нажатию
+
+@router.callback_query(lambda callback: callback.data == "renew_subscription")
+async def renew_subscription_callback(callback: types.CallbackQuery):
+    await callback.answer()
+    await callback.message.delete()
+    
+    user_tg_id = callback.from_user.id
+    
+    # Показываем варианты продления
+    await callback.message.answer(
+        "<tg-emoji emoji-id='5406756500108501710'>⏰</tg-emoji> <b>Продление подписки</b>\n\n"
+        "Выберите на какой период продлить подписку:",
+        reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="1 месяц - 200₽", callback_data="renew_select_1_200", style="primary")],
+                [InlineKeyboardButton(text="3 месяца - 500₽", callback_data="renew_select_3_500", style="primary")],
+                [InlineKeyboardButton(text="6 месяцев - 900₽", callback_data="renew_select_6_900", style="primary")],
+                [InlineKeyboardButton(text="12 месяцев - 1500₽", callback_data="renew_select_12_1500", style="primary")],
+                [InlineKeyboardButton(text="Назад", callback_data="subscription", style="secondary")]
+            ]
+        ),
+        parse_mode=ParseMode.HTML
+    )
+
+@router.callback_query(lambda callback: callback.data.startswith("renew_select_"))
+async def renew_select_callback(callback: types.CallbackQuery):
+    await callback.answer()
+    await callback.message.delete()
+    
+    # Извлекаем время и цену из callback_data
+    parts = callback.data.split("_")
+    time_months = int(parts[2])  # "renew_select_1_200" -> parts[2] = "1"
+    price_rubles = int(parts[3])  # "renew_select_1_200" -> parts[3] = "200"
+    
+    user_tg_id = callback.from_user.id
+    
+    await callback.message.answer(
+        f"<tg-emoji emoji-id='5417924076503062111'>💰</tg-emoji> <b>Подтверждение продления</b>\n\n"
+        f"<tg-emoji emoji-id='5440621591387980068'>⏰</tg-emoji> Период: {time_months} мес.\n"
+        f"<tg-emoji emoji-id='5417924076503062111'>💰</tg-emoji> Сумма: {price_rubles}₽\n\n"
+        "Для подтверждения оплаты свяжитесь с администратором.",
+        reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="✅ Я оплатил(а)", callback_data=f"renew_confirm_{time_months}_{price_rubles}", style="primary")],
+                [InlineKeyboardButton(text="Назад", callback_data="renew_subscription", style="secondary")]
+            ]
+        ),
+        parse_mode=ParseMode.HTML
+    )
+
+@router.callback_query(lambda callback: callback.data.startswith("renew_confirm_"))
+async def renew_confirm_callback(callback: types.CallbackQuery):
+    await callback.answer()
+    await callback.message.delete()
+    
+    # Извлекаем время и цену из callback_data
+    parts = callback.data.split("_")
+    time_months = int(parts[2])
+    price_rubles = int(parts[3])
+    
+    user_tg_id = callback.from_user.id
+    
+    # Отправляем уведомление администратору
+    await bot.send_message(
+        OPERATOR_CHAT_ID,
+        f"<tg-emoji emoji-id='5417924076503062111'>💰</tg-emoji> <b>Запрос на продление подписки</b>\n\n"
+        f"👤 Пользователь ID: {user_tg_id}\n"
+        f"<tg-emoji emoji-id='5440621591387980068'>⏰</tg-emoji> Продление на: {time_months} мес.\n"
+        f"<tg-emoji emoji-id='5417924076503062111'>💰</tg-emoji> Сумма: {price_rubles}₽\n\n"
+        "Для подтверждения продления:",
+        reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="✅ Подтвердить", callback_data=f"renew_approve_{user_tg_id}_{time_months}_{price_rubles}", style="primary")],
+                [InlineKeyboardButton(text="❌ Отклонить", callback_data=f"renew_reject_{user_tg_id}", style="secondary")]
+            ]
+        ),
+        parse_mode=ParseMode.HTML
+    )
+    
+    await callback.message.answer(
+        "✅ Запрос на продление отправлен администратору.\n"
+        "Ожидайте подтверждения.",
+        reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="Моя подписка", callback_data="subscription", style="primary")]
+            ]
+        ),
+        parse_mode=ParseMode.HTML
+    )
+
+@router.callback_query(lambda callback: callback.data.startswith("renew_approve_"))
+async def renew_approve_callback(callback: types.CallbackQuery):
+    await callback.answer()
+    await callback.message.delete()
+    
+    # Извлекаем информацию
+    parts = callback.data.split("_")
+    user_id = int(parts[2])
+    time_months = int(parts[3])
+    price_rubles = int(parts[4])
+    
+    # Продлеваем подписку
+    renew_result = renew_subscription(user_id, time_months)
+    
+    if renew_result.get('success'):
+        # Получаем новую дату окончания
+        new_expiry = renew_result.get('new_expiry')
+        end_time = datetime.datetime.fromtimestamp(new_expiry / 1000)
+        end_date_str = end_time.strftime("%d.%m.%Y")
+        
+        await bot.send_message(
+            chat_id=user_id,
+            text=(
+                f"<tg-emoji emoji-id='5416081784641168838'>✅</tg-emoji> <b>Подписка продлена</b>\n\n"
+                f"<tg-emoji emoji-id='5440621591387980068'>⏰</tg-emoji> Период продления: {time_months} мес.\n"
+                f"<tg-emoji emoji-id='5417924076503062111'>💰</tg-emoji> Сумма: {price_rubles}₽\n"
+                f"<tg-emoji emoji-id='5440621591387980068'>📅</tg-emoji> Действует до: {end_date_str}\n\n"
+                "Подписка успешно продлена! 🎉"
+            ),
+            reply_markup=InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [InlineKeyboardButton(text="Моя подписка", callback_data="subscription", style="primary", icon_custom_emoji_id='5296369303661067030')]
+                ]
+            ),
+            parse_mode=ParseMode.HTML
+        )
+        
+        await callback.message.answer(
+            f"✅ Подписка пользователя {user_id} продлена на {time_months} месяцев",
+            parse_mode=ParseMode.HTML
+        )
+    else:
+        await bot.send_message(
+            chat_id=user_id,
+            text="❌ Ошибка при продлении подписки. Свяжитесь с поддержкой.",
+            parse_mode=ParseMode.HTML
+        )
+        
+        await callback.message.answer(
+            f"❌ Ошибка при продлении подписки пользователя {user_id}: {renew_result.get('error')}",
+            parse_mode=ParseMode.HTML
+        )
+
+@router.callback_query(lambda callback: callback.data.startswith("renew_reject_"))
+async def renew_reject_callback(callback: types.CallbackQuery):
+    await callback.answer()
+    await callback.message.delete()
+    
+    user_id = int(callback.data.split("_")[2])
+    
+    await bot.send_message(
+        chat_id=user_id,
+        text="❌ Запрос на продление подписки отклонен.\n\n"
+             "Свяжитесь с администратором для уточнения деталей.",
+        reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="Моя подписка", callback_data="subscription", style="primary")]
+            ]
+        ),
+        parse_mode=ParseMode.HTML
+    )
+    
+    await callback.message.answer(
+        f"❌ Запрос на продление подписки пользователя {user_id} отклонен",
+        parse_mode=ParseMode.HTML
+    )
 
 @router.callback_query(lambda callback: callback.data == "admin_panel")
 async def admin_panel_callback(callback: types.CallbackQuery):
