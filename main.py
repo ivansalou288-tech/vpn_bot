@@ -698,68 +698,111 @@ async def renew_subscription_callback(callback: types.CallbackQuery):
     await callback.answer()
     await callback.message.delete()
     
-    user_tg_id = callback.from_user.id
+    # Получаем все цены из БД
+    prices = await get_all_prices()
     
-    # Показываем варианты продления
+    # Создаем клавиатуру с ценами из БД
+    keyboard_buttons = []
+    for price in prices:
+        months_text = "год" if price.time == 12 else f"{price.time} месяц{'а' if price.time > 1 and price.time < 5 else 'ев'}"
+        button_text = f"{months_text} - {price.price}₽"
+        keyboard_buttons.append([InlineKeyboardButton(text=button_text, callback_data=f"renew_select_price_{price.time}_{price.price}", style="primary")])
+    
+    renew_keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
+    
     await callback.message.answer(
         "<tg-emoji emoji-id='5406756500108501710'>⏰</tg-emoji> <b>Продление подписки</b>\n\n"
-        "Выберите на какой период продлить подписку:",
-        reply_markup=InlineKeyboardMarkup(
-            inline_keyboard=[
-                [InlineKeyboardButton(text="1 месяц - 200₽", callback_data="renew_select_1_200", style="primary")],
-                [InlineKeyboardButton(text="3 месяца - 500₽", callback_data="renew_select_3_500", style="primary")],
-                [InlineKeyboardButton(text="6 месяцев - 900₽", callback_data="renew_select_6_900", style="primary")],
-                [InlineKeyboardButton(text="12 месяцев - 1500₽", callback_data="renew_select_12_1500", style="primary")],
-                [InlineKeyboardButton(text="Назад", callback_data="subscription", style="primary")]
-            ]
-        ),
+        "Выберите на какой период продлить подписку:\n\n"
+        "<tg-emoji emoji-id='5416081784641168838'>✅</tg-emoji> Все тарифы включают:\n"
+        "• Безлимитный трафик\n"
+        "• Высокая скорость\n"
+        "• Поддержка 24/7\n"
+        "• Все устройства",
+        reply_markup=renew_keyboard,
         parse_mode=ParseMode.HTML
     )
 
-@router.callback_query(lambda callback: callback.data.startswith("renew_select_"))
+@router.callback_query(lambda callback: callback.data.startswith("renew_select_price_"))
 async def renew_select_callback(callback: types.CallbackQuery):
     await callback.answer()
     await callback.message.delete()
     
     # Извлекаем время и цену из callback_data
     parts = callback.data.split("_")
-    time_months = int(parts[2])  # "renew_select_1_200" -> parts[2] = "1"
-    price_rubles = int(parts[3])  # "renew_select_1_200" -> parts[3] = "200"
+    time_months = int(parts[3])  # "renew_select_price_1_200" -> parts[3] = "1"
+    price_rubles = int(parts[4])  # "renew_select_price_1_200" -> parts[4] = "200"
     
-    user_tg_id = callback.from_user.id
+    # Формируем текст времени
+    months_text = "год" if time_months == 12 else f"{time_months} месяц{'а' if time_months > 1 and time_months < 5 else 'ев'}"
+    
+    # Создаем кнопку оплаты
+    pay_keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Оплатить", callback_data=f"renew_confirm_pay_{time_months}_{price_rubles}", style="primary")]
+        ]
+    )
     
     await callback.message.answer(
-        f"<tg-emoji emoji-id='5417924076503062111'>💰</tg-emoji> <b>Подтверждение продления</b>\n\n"
-        f"<tg-emoji emoji-id='5440621591387980068'>⏰</tg-emoji> Период: {time_months} мес.\n"
-        f"<tg-emoji emoji-id='5417924076503062111'>💰</tg-emoji> Сумма: {price_rubles}₽\n\n"
-        "Для подтверждения оплаты свяжитесь с администратором.",
-        reply_markup=InlineKeyboardMarkup(
-            inline_keyboard=[
-                [InlineKeyboardButton(text="✅ Я оплатил(а)", callback_data=f"renew_confirm_{time_months}_{price_rubles}", style="primary")],
-                [InlineKeyboardButton(text="Назад", callback_data="renew_subscription", style="primary")]
-            ]
-        ),
+        f"<tg-emoji emoji-id='5251203410396458957'>�</tg-emoji> <b>Продление подписки</b>\n\n"
+        f"<tg-emoji emoji-id='5440621591387980068'>⏰</tg-emoji> Период продления: {months_text}\n"
+        f"<tg-emoji emoji-id='5417924076503062111'>💰</tg-emoji> Цена: {price_rubles}₽\n\n"
+        "Нажмите 'Оплатить' для продолжения:",
+        reply_markup=pay_keyboard,
         parse_mode=ParseMode.HTML
     )
 
-@router.callback_query(lambda callback: callback.data.startswith("renew_confirm_"))
+@router.callback_query(lambda callback: callback.data.startswith("renew_confirm_pay_"))
 async def renew_confirm_callback(callback: types.CallbackQuery):
     await callback.answer()
     await callback.message.delete()
     
     # Извлекаем время и цену из callback_data
     parts = callback.data.split("_")
-    time_months = int(parts[2])
-    price_rubles = int(parts[3])
+    time_months = int(parts[3])
+    price_rubles = int(parts[4])
+    
+    # Формируем текст времени
+    months_text = "год" if time_months == 12 else f"{time_months} месяц{'а' if time_months > 1 and time_months < 5 else 'ев'}"
+    
+    await callback.message.answer(
+        f"<tg-emoji emoji-id='5251203410396458957'>�</tg-emoji> <b>Информация об оплате продления</b>\n\n"
+        f"<tg-emoji emoji-id='5440621591387980068'>⏰</tg-emoji> Период продления: {months_text}\n"
+        f"<tg-emoji emoji-id='5417924076503062111'>💰</tg-emoji> Цена: {price_rubles}₽\n\n"
+        f"<tg-emoji emoji-id='5424972470023104089'>💳</tg-emoji> РЕКВИЗИТЫ <tg-emoji emoji-id='5424972470023104089'>💳</tg-emoji>\n"
+        f"<tg-emoji emoji-id='5195396392058641159'>💳</tg-emoji> ТИНЬКОФФ:\n"
+        f"<tg-emoji emoji-id='5440660757194744323'>💳</tg-emoji> <code>2200701411111369</code> (тык)\n\n"
+        f"<tg-emoji emoji-id='5345956698253180145'>💳</tg-emoji> СБП:\n"
+        f"<tg-emoji emoji-id='5440660757194744323'>💳</tg-emoji> <code>+7 962 992 91-38</code> (тык)\n"
+        f"<tg-emoji emoji-id='5440660757194744323'>💳</tg-emoji> СТРОГО Т-БАНК <tg-emoji emoji-id='5195396392058641159'>💳</tg-emoji>\n\n"
+        "После оплаты нажмите 'Я оплатил'",
+        reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="Я оплатил", callback_data=f"renew_paid_notify_{time_months}_{price_rubles}", style="primary")]
+            ]
+        ),
+        parse_mode=ParseMode.HTML
+    )
+
+@router.callback_query(lambda callback: callback.data.startswith("renew_paid_notify_"))
+async def renew_paid_notify_callback(callback: types.CallbackQuery):
+    await callback.answer()
+    
+    # Извлекаем время и цену из callback_data
+    parts = callback.data.split("_")
+    time_months = int(parts[3])
+    price_rubles = int(parts[4])
     
     user_tg_id = callback.from_user.id
+    
+    # Формируем текст времени
+    months_text = "год" if time_months == 12 else f"{time_months} месяц{'а' if time_months > 1 and time_months < 5 else 'ев'}"
     
     # Отправляем уведомление администратору
     await bot.send_message(
         OPERATOR_CHAT_ID,
         f"<tg-emoji emoji-id='5417924076503062111'>💰</tg-emoji> <b>Запрос на продление подписки</b>\n\n"
         f"👤 Пользователь ID: {user_tg_id}\n"
-        f"<tg-emoji emoji-id='5440621591387980068'>⏰</tg-emoji> Продление на: {time_months} мес.\n"
+        f"<tg-emoji emoji-id='5440621591387980068'>⏰</tg-emoji> Продление на: {months_text}\n"
         f"<tg-emoji emoji-id='5417924076503062111'>💰</tg-emoji> Сумма: {price_rubles}₽\n\n"
         "Для подтверждения продления:",
         reply_markup=InlineKeyboardMarkup(
