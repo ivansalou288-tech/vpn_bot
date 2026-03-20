@@ -150,6 +150,9 @@ router = Router()
 # Инициализация планировщика
 scheduler = AsyncIOScheduler()
 
+# Словарь для отслеживания отправленных напоминаний
+sent_reminders = {}  # {tg_id: {"day": timestamp, "hour": timestamp}
+
 async def check_subscription_expirations():
     """Проверяет истечение подписок и отправляет напоминания"""
     try:
@@ -187,14 +190,33 @@ async def check_subscription_expirations():
                         expiry_date = datetime.datetime.fromtimestamp(expiry_time / 1000)
                         time_left = expiry_date - current_time
                         
+                        # Получаем информацию о ранее отправленных напоминаниях
+                        user_reminders = sent_reminders.get(tg_id, {})
+                        
                         # Проверяем разные интервалы времени
                         if datetime.timedelta(hours=22) <= time_left <= datetime.timedelta(hours=25):
                             # Осталось 1 день (22-25 часов)
-                            await send_expiration_reminder(tg_id, "day", expiry_date)
+                            last_day_reminder = user_reminders.get("day", 0)
                             
+                            # Проверяем, не отправляли ли когда-либо напоминание за день
+                            if last_day_reminder == 0:
+                                await send_expiration_reminder(tg_id, "day", expiry_date)
+                                # Обновляем время отправки напоминания
+                                if tg_id not in sent_reminders:
+                                    sent_reminders[tg_id] = {}
+                                sent_reminders[tg_id]["day"] = current_time.timestamp()
+                                
                         elif datetime.timedelta(minutes=30) <= time_left <= datetime.timedelta(hours=2):
                             # Осталось 1 час (30 минут - 2 часа)
-                            await send_expiration_reminder(tg_id, "hour", expiry_date)
+                            last_hour_reminder = user_reminders.get("hour", 0)
+                            
+                            # Проверяем, не отправляли ли когда-либо напоминание за час
+                            if last_hour_reminder == 0:
+                                await send_expiration_reminder(tg_id, "hour", expiry_date)
+                                # Обновляем время отправки напоминания
+                                if tg_id not in sent_reminders:
+                                    sent_reminders[tg_id] = {}
+                                sent_reminders[tg_id]["hour"] = current_time.timestamp()
     
     except Exception as e:
         print(f"Error checking subscription expirations: {e}")
