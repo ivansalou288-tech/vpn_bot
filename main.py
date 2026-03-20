@@ -769,7 +769,8 @@ async def select_price_callback(callback: types.CallbackQuery):
     # Создаем кнопку оплаты
     pay_keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="Оплатить", callback_data=f"confirm_pay_{time_months}_{price_rubles}", style="primary")]
+            [InlineKeyboardButton(text="Оплатить картой", callback_data=f"confirm_pay_{time_months}_{price_rubles}", style="primary")],
+            [InlineKeyboardButton(text="Оплатить звездами", callback_data=f"pay_stars_{time_months}_{price_rubles}", style="primary")]
         ]
     )
     
@@ -779,6 +780,28 @@ async def select_price_callback(callback: types.CallbackQuery):
         f"<tg-emoji emoji-id='5417924076503062111'>💰</tg-emoji> Цена: {price_rubles}₽\n\n"
         "Нажмите 'Оплатить' для продолжения:",
         reply_markup=pay_keyboard,
+        parse_mode=ParseMode.HTML
+    )
+
+@router.callback_query(lambda callback: callback.data.startswith("pay_stars_"))
+async def pay_stars_callback(callback: types.CallbackQuery):
+    await callback.answer()
+    await callback.message.answer(
+        "<tg-emoji emoji-id='5416081784641168838'>🚧</tg-emoji> <b>В разработке</b>\n\n"
+        "Оплата звездами временно недоступна.\n"
+        "Мы работаем над добавлением этой функции.\n\n"
+        "Пожалуйста, воспользуйтесь оплатой картой.",
+        parse_mode=ParseMode.HTML
+    )
+
+@router.callback_query(lambda callback: callback.data.startswith("renew_pay_stars_"))
+async def renew_pay_stars_callback(callback: types.CallbackQuery):
+    await callback.answer()
+    await callback.message.answer(
+        "<tg-emoji emoji-id='5416081784641168838'>🚧</tg-emoji> <b>В разработке</b>\n\n"
+        "Оплата звездами временно недоступна.\n"
+        "Мы работаем над добавлением этой функции.\n\n"
+        "Пожалуйста, воспользуйтесь оплатой картой.",
         parse_mode=ParseMode.HTML
     )
 
@@ -1001,7 +1024,8 @@ async def renew_select_callback(callback: types.CallbackQuery):
     # Создаем кнопку оплаты
     pay_keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="Оплатить", callback_data=f"renew_confirm_pay_{time_months}_{price_rubles}", style="primary")]
+            [InlineKeyboardButton(text="Оплатить картой", callback_data=f"renew_confirm_pay_{time_months}_{price_rubles}", style="primary")],
+            [InlineKeyboardButton(text="Оплатить звездами", callback_data=f"renew_pay_stars_{time_months}_{price_rubles}", style="primary")]
         ]
     )
     
@@ -1011,6 +1035,17 @@ async def renew_select_callback(callback: types.CallbackQuery):
         f"<tg-emoji emoji-id='5417924076503062111'>💰</tg-emoji> Цена: {price_rubles}₽\n\n"
         "Нажмите 'Оплатить' для продолжения:",
         reply_markup=pay_keyboard,
+        parse_mode=ParseMode.HTML
+    )
+
+@router.callback_query(lambda callback: callback.data.startswith("renew_pay_stars_"))
+async def renew_pay_stars_callback(callback: types.CallbackQuery):
+    await callback.answer()
+    await callback.message.answer(
+        "<tg-emoji emoji-id='5416081784641168838'>🚧</tg-emoji> <b>В разработке</b>\n\n"
+        "Оплата звездами временно недоступна.\n"
+        "Мы работаем над добавлением этой функции.\n\n"
+        "Пожалуйста, воспользуйтесь оплатой картой.",
         parse_mode=ParseMode.HTML
     )
 
