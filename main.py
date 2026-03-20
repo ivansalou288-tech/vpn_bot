@@ -142,6 +142,7 @@ async def get_all_prices():
     async with AsyncSessionLocal() as session:
         result = await session.execute(select(Price).order_by(Price.time))
         prices = result.scalars().all()
+        print(f"Raw prices from DB: {prices}")  # Отладочная информация
         return prices
 
 # Асинхронная функция для получения цены по времени
@@ -780,14 +781,18 @@ async def buy_subscription_callback(callback: types.CallbackQuery):
     # Получаем все цены из БД
     prices = await get_all_prices()
     
+    print(f"Prices from DB: {prices}")  # Отладочная информация
+    
     # Создаем клавиатуру с ценами из БД
     keyboard_buttons = []
     for price in prices:
         months_text = "год" if price.time == 12 else f"{price.time} месяц{'а' if price.time > 1 and price.time < 5 else 'ев'}"
         button_text = f"{months_text} - {price.price}₽"
         keyboard_buttons.append([InlineKeyboardButton(text=button_text, callback_data=f"select_price_{price.time}_{price.price}", style="primary")])
+        print(f"Created button: {button_text} with callback_data: select_price_{price.time}_{price.price}")
     
     buy_keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
+    print(f"Keyboard buttons: {keyboard_buttons}")
     
     await callback.message.answer(
         "<tg-emoji emoji-id='5251203410396458957'>🛒</tg-emoji> <b>Покупка подписки</b>\n\n"
@@ -1119,9 +1124,10 @@ async def referral_callback(callback: types.CallbackQuery):
 async def renew_subscription_callback(callback: types.CallbackQuery):
     await callback.answer()
     await callback.message.delete()
-    
     # Получаем все цены из БД
     prices = await get_all_prices()
+    
+    print(f"Prices from DB (renew): {prices}")  # Отладочная информация
     
     # Создаем клавиатуру с ценами из БД
     keyboard_buttons = []
@@ -1129,8 +1135,10 @@ async def renew_subscription_callback(callback: types.CallbackQuery):
         months_text = "год" if price.time == 12 else f"{price.time} месяц{'а' if price.time > 1 and price.time < 5 else 'ев'}"
         button_text = f"{months_text} - {price.price}₽"
         keyboard_buttons.append([InlineKeyboardButton(text=button_text, callback_data=f"renew_select_price_{price.time}_{price.price}", style="primary")])
+        print(f"Created renew button: {button_text} with callback_data: renew_select_price_{price.time}_{price.price}")
     
     renew_keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
+    print(f"Renew keyboard buttons: {keyboard_buttons}")
     
     await callback.message.answer(
         "<tg-emoji emoji-id='5406756500108501710'>⏰</tg-emoji> <b>Продление подписки</b>\n\n"
