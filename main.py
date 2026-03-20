@@ -5,9 +5,8 @@ import os
 import re
 import sys
 import time
-from aiogram.types import LabeledPrice, Message  
-from aiogram.types import PreCheckoutQuery
-from botlogic.keyboards.payment_keyboard import payment_keyboard 
+from aiogram.types import LabeledPrice, Message, PreCheckoutQuery
+from botlogic import payment_keyboard 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 
@@ -1791,8 +1790,8 @@ async def main():
     
     # Запуск бота
     dp = Dispatcher()
-    dp.pre_checkout_query.register(payment.pre_checkout_handler)
-    dp.message.register(payment.success_payment_handler, F.successful_payment)
+    dp.pre_checkout_query.register(pre_checkout_handler)
+    dp.message.register(success_payment_handler, F.successful_payment)
     dp.include_router(router)
     await dp.start_polling(bot)
     
