@@ -964,6 +964,18 @@ async def success_payment_handler(message: Message):
             time_months = int(parts[1])
             price_rubles = int(parts[2])
             
+            # Отправляем уведомление администратору
+            await bot.send_message(
+                OPERATOR_CHAT_ID,
+                f"<tg-emoji emoji-id='5416081784641168838'>💰</tg-emoji> <b>Новая покупка!</b>\n\n"
+                f"👤 Пользователь: @{message.from_user.username} (ID: {message.from_user.id})\n"
+                f"<tg-emoji emoji-id='5440621591387980068'>⏰</tg-emoji> Период: {time_months} мес.\n"
+                f"<tg-emoji emoji-id='5417924076503062111'>💰</tg-emoji> Цена: {price_rubles}₽\n"
+                f"<tg-emoji emoji-id='5424972470023104089'>⭐</tg-emoji> Оплата: {payment_info.total_amount} {payment_info.currency}\n\n"
+                f"<tg-emoji emoji-id='5416081784641168838'>✅</tg-emoji> Покупка успешно завершена!",
+                parse_mode=ParseMode.HTML
+            )
+            
             # Проверяем, есть ли у пользователя уже подписка
             subscription_info, status = await get_subscription_info(message.from_user.id)
             
@@ -975,6 +987,17 @@ async def success_payment_handler(message: Message):
                     new_expiry = renew_result.get('new_expiry')
                     end_time = datetime.datetime.fromtimestamp(new_expiry / 1000)
                     end_date_str = end_time.strftime("%d.%m.%Y")
+                    
+                    # Обновляем уведомление администратору о продлении
+                    await bot.send_message(
+                        OPERATOR_CHAT_ID,
+                        f"<tg-emoji emoji-id='5406756500108501710'>🔄</tg-emoji> <b>Подписка продлена!</b>\n\n"
+                        f"👤 Пользователь: @{message.from_user.username} (ID: {message.from_user.id})\n"
+                        f"<tg-emoji emoji-id='5440621591387980068'>⏰</tg-emoji> Продление на: {time_months} мес.\n"
+                        f"<tg-emoji emoji-id='5440621591387980068'>📅</tg-emoji> Новая дата: {end_date_str}\n"
+                        f"<tg-emoji emoji-id='5424972470023104089'>⭐</tg-emoji> Оплата: {payment_info.total_amount} {payment_info.currency}",
+                        parse_mode=ParseMode.HTML
+                    )
                     
                     await message.answer(
                         f"<tg-emoji emoji-id='5416081784641168838'>✅</tg-emoji> <b>Подписка продлена!</b>\n\n"
@@ -1008,6 +1031,18 @@ async def success_payment_handler(message: Message):
                     api_date = end_time.strftime("%d.%m.%Y")
                     result = add_client(21, f"user_{message.from_user.id}", message.from_user.id, api_date)
                     print(f"Client added via stars payment: {result}")
+                    
+                    # Обновляем уведомление администратору о новой подписке
+                    await bot.send_message(
+                        OPERATOR_CHAT_ID,
+                        f"<tg-emoji emoji-id='5416081784641168838'>🆕</tg-emoji> <b>Новая подписка создана!</b>\n\n"
+                        f"👤 Пользователь: @{message.from_user.username} (ID: {message.from_user.id})\n"
+                        f"<tg-emoji emoji-id='5440621591387980068'>⏰</tg-emoji> Период: {time_months} мес.\n"
+                        f"<tg-emoji emoji-id='5440621591387980068'>📅</tg-emoji> Действует до: {end_date_str}\n"
+                        f"<tg-emoji emoji-id='5417924076503062111'>💰</tg-emoji> Цена: {price_rubles}₽\n"
+                        f"<tg-emoji emoji-id='5424972470023104089'>⭐</tg-emoji> Оплата: {payment_info.total_amount} {payment_info.currency}",
+                        parse_mode=ParseMode.HTML
+                    )
                     
                     # Отправляем подтверждение пользователю
                     await message.answer(
