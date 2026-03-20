@@ -1103,7 +1103,7 @@ async def renew_pay_stars_callback(callback: types.CallbackQuery):
             provider_token="",  
             payload=f"sub_{time_months}_{price_rubles}",  
             currency="XTR",  
-            reply_markup=payment_keyboard(),  
+            reply_markup=payment_keyboard(stars_amount),  
         )
 
 @router.callback_query(lambda callback: callback.data.startswith("confirm_pay_"))
