@@ -143,6 +143,32 @@ async def get_all_prices():
         result = await session.execute(select(Price).order_by(Price.time))
         prices = result.scalars().all()
         print(f"Raw prices from DB: {prices}")  # Отладочная информация
+        
+        # Если в БД нет цен, добавляем тестовые
+        if not prices:
+            print("No prices found in DB, adding default prices...")
+            default_prices = [
+                {"time": 1, "price": 150},
+                {"time": 3, "price": 405},
+                {"time": 6, "price": 720},
+                {"time": 12, "price": 1260}
+            ]
+            
+            for price_data in default_prices:
+                new_price = Price(
+                    time=price_data["time"],
+                    price=price_data["price"]
+                )
+                session.add(new_price)
+            
+            await session.commit()
+            print("Default prices added to database")
+            
+            # Повторно получаем цены
+            result = await session.execute(select(Price).order_by(Price.time))
+            prices = result.scalars().all()
+            print(f"Prices after adding defaults: {prices}")
+        
         return prices
 
 # Асинхронная функция для получения цены по времени
