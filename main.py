@@ -1515,7 +1515,7 @@ async def main():
     # Запуск планировщика для проверки подписок
     scheduler.add_job(
         check_subscription_expirations,
-        trigger=IntervalTrigger(hours=1),  # Проверка раз в час
+        trigger=IntervalTrigger(minutes=10),  # Проверка каждые 10 минут
         id='subscription_expiration_check',
         name='Check subscription expirations',
         replace_existing=True
@@ -1523,7 +1523,7 @@ async def main():
     
     # Запускаем планировщик
     scheduler.start()
-    print("Scheduler started - checking subscription expirations every hour")
+    print("Scheduler started - checking subscription expirations every 10 minutes")
     
     # Запуск бота
     dp = Dispatcher()
