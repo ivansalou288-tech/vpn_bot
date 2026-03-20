@@ -153,6 +153,101 @@ scheduler = AsyncIOScheduler()
 # Словарь для отслеживания отправленных напоминаний
 sent_reminders = {}  # {tg_id: {"day": timestamp, "hour": timestamp}
 
+# Словарь для отслеживания рефералов
+referral_bonus_given = {}  # {tg_id: True}
+
+async def handle_referral_bonus(user_id: int, referrer_id: int):
+    """Обрабатывает реферальный бонус"""
+    try:
+        # Проверяем, не получал ли пользователь уже бонус
+        if user_id in referral_bonus_given:
+            print(f"User {user_id} already received referral bonus")
+            return
+        
+        # Проверяем подписку реферала
+        subscription_info, status = await get_subscription_info(referrer_id)
+        
+        if status == "has_subscription":
+            # У реферала есть подписка - добавляем 2 дня к подписке нового пользователя
+            await add_referral_days_to_user(user_id, 2)
+            
+            # Отправляем уведомление новому пользователю
+            await bot.send_message(
+                user_id,
+                f"<tg-emoji emoji-id='5416081784641168838'>🎉</tg-emoji> <b>Поздравляем! Вы получили бонус!</b>\n\n"
+                f"Вы перешли по реферальной ссылке пользователя.\n"
+                f"<tg-emoji emoji-id='5440621591387980068'>🎁</tg-emoji> Вам начислено: <b>2 дня</b> бесплатной подписки!\n\n"
+                "Спасибо, что выбрали наш сервис! 🚀",
+                parse_mode=ParseMode.HTML
+            )
+            
+            # Отправляем уведомление рефералу
+            await bot.send_message(
+                referrer_id,
+                f"<tg-emoji emoji-id='5416081784641168838'>🎉</tg-emoji> <b>Поздравляем! Новый реферал!</b>\n\n"
+                f"По вашей ссылке зарегистрировался новый пользователь.\n"
+                f"<tg-emoji emoji-id='5417924076503062111'>💰</tg-emoji> Ваш бонус скоро будет начислен!\n\n"
+                "Спасибо за привлечение новых пользователей! 🚀",
+                parse_mode=ParseMode.HTML
+            )
+            
+        else:
+            # У реферала нет подписки - даем подписку на 2 дня новому пользователю
+            await add_referral_days_to_user(user_id, 2)
+            
+            # Отправляем уведомление новому пользователю
+            await bot.send_message(
+                user_id,
+                f"<tg-emoji emoji-id='5416081784641168838'>🎉</tg-emoji> <b>Поздравляем! Вы получили бонус!</b>\n\n"
+                f"Вы перешли по реферальной ссылке.\n"
+                f"<tg-emoji emoji-id='5440621591387980068'>🎁</tg-emoji> Вам начислена подписка на <b>2 дня</b>!\n\n"
+                "Спасибо, что выбрали наш сервис! 🚀",
+                parse_mode=ParseMode.HTML
+            )
+        
+        # Помечаем, что бонус выдан
+        referral_bonus_given[user_id] = True
+        print(f"Referral bonus given to user {user_id} from referrer {referrer_id}")
+        
+    except Exception as e:
+        print(f"Error handling referral bonus for user {user_id}: {e}")
+
+async def add_referral_days_to_user(user_id: int, days: int):
+    """Добавляет дни к подписке пользователя или создает новую подписку"""
+    try:
+        # Проверяем, есть ли у пользователя уже подписка
+        result = getSubById(user_id)
+        
+        if result.get('success'):
+            # У пользователя есть подписка - продлеваем
+            current_expiry = result.get('client_info', {}).get('expiryTime', 0)
+            if current_expiry:
+                # Добавляем 2 дня (48 часов в миллисекундах)
+                new_expiry = current_expiry + (days * 24 * 60 * 60 * 1000)
+                
+                # Обновляем клиента с новым временем
+                email = result.get('client_info', {}).get('email', f'user_{user_id}')
+                renew_result = renew_subscription(user_id, days)
+                
+                if renew_result.get('success'):
+                    print(f"Added {days} days to existing subscription for user {user_id}")
+                else:
+                    print(f"Failed to add days to subscription for user {user_id}: {renew_result.get('error')}")
+        else:
+            # У пользователя нет подписки - создаем новую на 2 дня
+            current_time = datetime.datetime.now()
+            end_time = current_time + datetime.timedelta(days=days)
+            api_date = end_time.strftime("%d.%m.%Y")
+            
+            add_result = add_client(21, f"user_{user_id}", user_id, api_date)
+            if add_result.get('success'):
+                print(f"Created new {days} day subscription for user {user_id}")
+            else:
+                print(f"Failed to create subscription for user {user_id}: {add_result}")
+                
+    except Exception as e:
+        print(f"Error adding referral days for user {user_id}: {e}")
+
 async def check_subscription_expirations():
     """Проверяет истечение подписок и отправляет напоминания"""
     try:
@@ -273,6 +368,7 @@ info_btn = InlineKeyboardButton(text="Информация", callback_data="info
 instruction_btn = InlineKeyboardButton(text="Инструкция и приложение", url = 'https://ezh-dev.ru/vpn_bot/index.html', style="success", icon_custom_emoji_id='5282843764451195532')
 app_btn = InlineKeyboardButton(text="Приложение", callback_data="app", style="primary")
 buy_subscription_btn = InlineKeyboardButton(text="Купить подписку", callback_data="buy_subscription", style="primary", icon_custom_emoji_id='5271604874419647061')
+referral_btn = InlineKeyboardButton(text="Реферальная программа", callback_data="referral", style="primary", icon_custom_emoji_id='5416081784641168838')
 admin_btn = InlineKeyboardButton(text="⚙️ Админ панель", callback_data="admin_panel", style="secondary")
 
 # Создаем inline клавиатуру (кнопки в разных строках)
@@ -281,7 +377,9 @@ keyboard = InlineKeyboardMarkup(
         [subscription_btn],      # Первая строка                
         [contact_btn],          # Вторая строка  
         [info_btn],             # Третья строка
-        [instruction_btn]       # Четвертая строка
+        [instruction_btn],      # Четвертая строка
+        [referral_btn],        # Пятая строка - реферальная программа
+        [buy_subscription_btn]  # Шестая строка
     ]
 )
 
@@ -323,6 +421,14 @@ contacts_management_keyboard = InlineKeyboardMarkup(
 
 @router.message(Command("start"))
 async def start(message: types.Message):
+    # Проверяем, есть ли реферальный параметр
+    args = message.text.split()
+    referrer_id = None
+    
+    if len(args) > 1 and args[1].isdigit():
+        referrer_id = int(args[1])
+        print(f"User {message.from_user.id} joined with referrer {referrer_id}")
+    
     if is_admin(message.from_user.id):
         await message.answer(
             "⚙️ <b>Админ панель</b>\n\n"
@@ -331,11 +437,35 @@ async def start(message: types.Message):
             parse_mode=ParseMode.HTML
         )
     else:
+        # Если есть реферал, даем бонус
+        if referrer_id and referrer_id != message.from_user.id:
+            await handle_referral_bonus(message.from_user.id, referrer_id)
+        
         await message.answer(
             "Привет! Я бот для управления VPN.\n\n"
             "Выберите одну из опций ниже:",
             reply_markup=keyboard
         )
+
+@router.message(Command("referral"))
+async def referral_command(message: types.Message):
+    """Отправляет реферальную ссылку пользователю"""
+    if is_admin(message.from_user.id):
+        return
+    
+    # Создаем реферальную ссылку
+    bot_username = (await bot.get_me()).username
+    referral_link = f"https://t.me/{bot_username}?start={message.from_user.id}"
+    
+    await message.answer(
+        f"<tg-emoji emoji-id='5416081784641168838'>🔗</tg-emoji> <b>Ваша реферальная ссылка</b>\n\n"
+        f"<code>{referral_link}</code>\n\n"
+        f"<tg-emoji emoji-id='5440621591387980068'>🎁</tg-emoji> <b>Условия бонуса:</b>\n"
+        f"• Если у вас есть подписка - рефералу добавится <b>2 дня</b> к подписке\n"
+        f"• Если у вас нет подписки - рефералу дается подписка на <b>2 дня</b>\n\n"
+        "Делитесь ссылкой и получайте бонусы! 🚀",
+        parse_mode=ParseMode.HTML
+    )
 
 # Асинхронная функция для получения info из БД
 async def get_info(info_id: int = 1):
@@ -808,10 +938,23 @@ async def instruction_callback(callback: types.CallbackQuery):
     await callback.answer()
     # Пока ничего не делаем по нажатию
 
-@router.callback_query(lambda callback: callback.data == "app")
-async def app_callback(callback: types.CallbackQuery):
+@router.callback_query(lambda callback: callback.data == "referral")
+async def referral_callback(callback: types.CallbackQuery):
     await callback.answer()
-    # Пока ничего не делаем по нажатию
+    
+    # Создаем реферальную ссылку
+    bot_username = (await bot.get_me()).username
+    referral_link = f"https://t.me/{bot_username}?start={callback.from_user.id}"
+    
+    await callback.message.answer(
+        f"<tg-emoji emoji-id='5416081784641168838'>🔗</tg-emoji> <b>Ваша реферальная ссылка</b>\n\n"
+        f"<code>{referral_link}</code>\n\n"
+        f"<tg-emoji emoji-id='5440621591387980068'>🎁</tg-emoji> <b>Условия бонуса:</b>\n"
+        f"• Если у вас есть подписка - рефералу добавится <b>2 дня</b> к подписке\n"
+        f"• Если у вас нет подписки - рефералу дается подписка на <b>2 дня</b>\n\n"
+        "Делитесь ссылкой и получайте бонусы! 🚀",
+        parse_mode=ParseMode.HTML
+    )
 
 @router.callback_query(lambda callback: callback.data == "renew_subscription")
 async def renew_subscription_callback(callback: types.CallbackQuery):
