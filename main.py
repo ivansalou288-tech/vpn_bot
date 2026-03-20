@@ -149,7 +149,7 @@ async def get_all_prices():
             print("No prices found in DB, adding default prices...")
             default_prices = [
                 {"time": 1, "price": 150},
-                {"time": 3, "price": 405},
+                {"time": 3, "price": 425},
                 {"time": 6, "price": 720},
                 {"time": 12, "price": 1260}
             ]
