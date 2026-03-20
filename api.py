@@ -117,7 +117,35 @@ def getNewmldsa65():
     else:
         return {"error": "Login failed"}
 
-
+def dell_client(inboundId: int, telegramId: int):
+    # Get client info first
+    client_info = getSubById(telegramId)
+    
+    if not client_info.get('success'):
+        return {"error": "Client not found", "details": client_info}
+    
+    email = client_info['client_info']['email']
+    
+    # First login to get session
+    admin_login = {
+        "username": admn_username,
+        "password": admn_pass
+    }
+    
+    # Create session and login
+    session = requests.Session()
+    login_response = session.post(f"{BASE_URL}/login", json=admin_login, verify=False)
+    
+    if login_response.json().get('success'):
+        # Use the authenticated session to delete client
+        response = session.post(f"{BASE_URL}/panel/api/inbounds/{inboundId}/delClientByEmail/{email}", verify=False)
+        result = response.json()
+        if result.get('success'):
+            return result
+        else:
+            return result
+    else:
+        return {"error": "Login failed"}
 
 def getNewX25519Cert():
     # First login to get session

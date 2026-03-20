@@ -1,8 +1,10 @@
 import asyncio
 import datetime
+import json
 import os
 import re
 import sys
+import time
 
 from sqlalchemy import create_engine, Column, Integer, String, select
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
@@ -15,7 +17,7 @@ from aiogram.utils.keyboard import InlineKeyboardMarkup, InlineKeyboardButton
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-from api import add_client, getSubById, check_cantfree, add_to_cantfree
+from api import add_client, getSubById, check_cantfree, add_to_cantfree, dell_client, get_clients
 
 OPERATOR_CHAT_ID = 1240656726
 
@@ -285,6 +287,42 @@ async def get_subscription_info(tg_id: int):
 
         print(result)
         if result.get('success'):
+            # Проверяем время подписки
+            expiry_time = result['client_info']['expiryTime']
+            current_time = int(time.time() * 1000)  # Текущее время в миллисекундах
+            
+            # Если время подписки вышло, удаляем клиента
+            if expiry_time != 0 and expiry_time < current_time:
+                # Получаем inboundId для удаления
+                clients_data = get_clients()
+                inbound_id = None
+                
+                if clients_data.get('success'):
+                    inbounds = clients_data.get('obj', [])
+                    for inbound in inbounds:
+                        if 'settings' in inbound:
+                            settings = inbound['settings']
+                            if isinstance(settings, str):
+                                try:
+                                    settings = json.loads(settings)
+                                except json.JSONDecodeError:
+                                    continue
+                            
+                            if 'clients' in settings:
+                                clients = settings['clients']
+                                for client in clients:
+                                    if str(client.get('tgId')) == str(tg_id):
+                                        inbound_id = inbound.get('id')
+                                        break
+                        if inbound_id:
+                            break
+                
+                # Удаляем клиента
+                if inbound_id:
+                    dell_client(inbound_id, tg_id)
+                
+                return "<tg-emoji emoji-id='5411225014148014586'>❌</tg-emoji> Время вашей подписки истекло\n\nДля получения доступа к VPN необходимо оформить подписку.", "no_subscription"
+            
             # Проверяем статус подписки
             is_enabled = result['client_info']['enable']
             status_emoji = "<tg-emoji emoji-id='5416081784641168838'>✅</tg-emoji>" if is_enabled else "<tg-emoji emoji-id='5411225014148014586'>❌</tg-emoji>"
