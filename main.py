@@ -40,10 +40,20 @@ class Contacts(Base):
     value = Column(String)
 
 class Price(Base):
-    __tablename__ = "price"
-    id = Column(Integer, primary_key=True)
-    time = Column(Integer)
-    price = Column(Integer)
+    __tablename__ = 'prices'
+    id = Column(Integer, primary_key=True, index=True)
+    time = Column(Integer, nullable=False)
+    price = Column(Integer, nullable=False)
+
+class User(Base):
+    __tablename__ = 'users'
+    id = Column(Integer, primary_key=True, index=True)
+    telegram_id = Column(Integer, unique=True, nullable=False, index=True)
+    username = Column(String, nullable=True)
+    first_name = Column(String, nullable=True)
+    last_name = Column(String, nullable=True)
+    registered_at = Column(String, nullable=False)
+    last_active = Column(String, nullable=True)
 
 class CantFree(Base):
     __tablename__ = "cant_free"
@@ -140,6 +150,74 @@ async def get_price(time_months: int):
         result = await session.execute(select(Price).filter(Price.time == time_months))
         price_record = result.scalar_one_or_none()
         return price_record.price if price_record else None
+
+# Асинхронная функция для добавления/обновления пользователя
+async def add_or_update_user(user: types.User):
+    async with AsyncSessionLocal() as session:
+        # Ищем пользователя с указанным telegram_id
+        result = await session.execute(select(User).filter(User.telegram_id == user.id))
+        existing_user = result.scalar_one_or_none()
+        
+        current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
+        if existing_user:
+            # Если пользователь существует, обновляем его данные и время последней активности
+            existing_user.username = user.username
+            existing_user.first_name = user.first_name
+            existing_user.last_name = user.last_name
+            existing_user.last_active = current_time
+            await session.commit()
+            await session.refresh(existing_user)
+            print(f"User {user.id} updated: {user.username or user.first_name}")
+        else:
+            # Если пользователя нет, создаем нового
+            new_user = User(
+                telegram_id=user.id,
+                username=user.username,
+                first_name=user.first_name,
+                last_name=user.last_name,
+                registered_at=current_time,
+                last_active=current_time
+            )
+            session.add(new_user)
+            await session.commit()
+            await session.refresh(new_user)
+            print(f"New user {user.id} registered: {user.username or user.first_name}")
+        
+        return existing_user or new_user
+
+# Асинхронная функция для получения всех пользователей
+async def get_all_users():
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(select(User))
+        users = result.scalars().all()
+        return users
+
+# Асинхронная функция для рассылки сообщения всем пользователям
+async def broadcast_to_all_users(message_text: str):
+    users = await get_all_users()
+    success_count = 0
+    error_count = 0
+    
+    for user in users:
+        try:
+            await bot.send_message(
+                user.telegram_id,
+                message_text,
+                parse_mode=ParseMode.HTML
+            )
+            success_count += 1
+            print(f"Message sent to user {user.telegram_id}: {user.username or user.first_name}")
+            
+            # Небольшая задержка чтобы не превысить лимиты Telegram
+            await asyncio.sleep(0.1)
+            
+        except Exception as e:
+            error_count += 1
+            print(f"Failed to send message to user {user.telegram_id}: {e}")
+    
+    print(f"Broadcast completed: {success_count} successful, {error_count} errors")
+    return {"success": success_count, "errors": error_count}
 
 # Код бота
 TOKEN = "8358697144:AAGppsqXjG9S08nGLUpghL-jUfTz9H4gj58"
@@ -389,7 +467,8 @@ admin_keyboard = InlineKeyboardMarkup(
         [InlineKeyboardButton(text="💰 Цены", callback_data="admin_prices", style="primary")],
         [InlineKeyboardButton(text="📝 Информация", callback_data="admin_info", style="primary")],
         [InlineKeyboardButton(text="📞 Контакты", callback_data="admin_contacts", style="primary")],
-        [InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_main", style="primary")]
+        [InlineKeyboardButton(text="� Рассылка", callback_data="admin_broadcast", style="primary")],
+        [InlineKeyboardButton(text="�� Назад", callback_data="back_to_main", style="primary")]
     ]
 )
 
@@ -421,6 +500,9 @@ contacts_management_keyboard = InlineKeyboardMarkup(
 
 @router.message(Command("start"))
 async def start(message: types.Message):
+    # Добавляем/обновляем пользователя в базе данных
+    await add_or_update_user(message.from_user)
+    
     # Проверяем, есть ли реферальный параметр
     args = message.text.split()
     referrer_id = None
@@ -464,6 +546,44 @@ async def referral_command(message: types.Message):
         f"• Если у вас есть подписка - рефералу добавится <b>2 дня</b> к подписке\n"
         f"• Если у вас нет подписки - рефералу дается подписка на <b>2 дня</b>\n\n"
         "Делитесь ссылкой и получайте бонусы! 🚀",
+        parse_mode=ParseMode.HTML
+    )
+
+@router.message(Command("notify"))
+async def broadcast_command(message: types.Message):
+    """Рассылает сообщение всем пользователям (только для админа)"""
+    if not is_admin(message.from_user.id):
+        await message.answer("⛔ У вас нет прав для выполнения этой команды.")
+        return
+    
+    # Проверяем, есть ли текст после команды
+    args = message.text.split(maxsplit=1)
+    if len(args) < 2:
+        await message.answer(
+            "📢 <b>Рассылка сообщений</b>\n\n"
+            "Использование:\n"
+            "<code>/broadcast Ваше сообщение</code>\n\n"
+            "Пример:\n"
+            "<code>/broadcast 🔔 Внимание! Проводятся технические работы...</code>",
+            parse_mode=ParseMode.HTML
+        )
+        return
+    
+    broadcast_text = args[1]
+    
+    # Отправляем сообщение о начале рассылки
+    status_message = await message.answer("📢 Начинаю рассылку сообщений...")
+    
+    # Выполняем рассылку
+    result = await broadcast_to_all_users(broadcast_text)
+    
+    # Обновляем статусное сообщение
+    await status_message.edit_text(
+        f"✅ <b>Рассылка завершена!</b>\n\n"
+        f"📊 <b>Статистика:</b>\n"
+        f"• Успешно отправлено: <b>{result['success']}</b>\n"
+        f"• Ошибок: <b>{result['errors']}</b>\n"
+        f"• Всего пользователей: <b>{result['success'] + result['errors']}</b>",
         parse_mode=ParseMode.HTML
     )
 
@@ -924,13 +1044,29 @@ async def reject_payment_callback(callback: types.CallbackQuery):
     time_months = int(parts[3])
     price_rubles = int(parts[4])
     
+    # Отправляем уведомление оператору
     await callback.message.answer(
         f"<tg-emoji emoji-id='5411225014148014586'>❌</tg-emoji> <b>Оплата отклонена</b>\n\n"
         f"👤 Пользователь ID: {user_id}\n"
         f"<tg-emoji emoji-id='5440621591387980068'>⏰</tg-emoji> Период: {time_months} мес.\n"
         f"<tg-emoji emoji-id='5417924076503062111'>💰</tg-emoji> Сумма: {price_rubles}₽\n\n"
-        "Оплата не подтверждена. Свяжитесь с поддержкой.", parse_mode=ParseMode.HTML
+        "Оплата не подтверждена. Свяжитесь с поддержкой.", 
+        parse_mode=ParseMode.HTML
     )
+    
+    # Отправляем уведомление пользователю
+    try:
+        await bot.send_message(
+            user_id,
+            f"<tg-emoji emoji-id='5411225014148014586'>❌</tg-emoji> <b>Оплата отклонена</b>\n\n"
+            f"К сожалению, ваша оплата на сумму {price_rubles}₽ за {time_months} мес. не была подтверждена.\n\n"
+            "Пожалуйста, свяжитесь с поддержкой для уточнения деталей.\n"
+            "Возможно, требуется дополнительная проверка оплаты.",
+            parse_mode=ParseMode.HTML
+        )
+        print(f"Rejection notification sent to user {user_id}")
+    except Exception as e:
+        print(f"Failed to send rejection notification to user {user_id}: {e}")
 
 @router.callback_query(lambda callback: callback.data == "contact")
 async def contact_callback(callback: types.CallbackQuery):
@@ -1174,10 +1310,13 @@ async def renew_reject_callback(callback: types.CallbackQuery):
     
     user_id = int(callback.data.split("_")[2])
     
+    # Отправляем уведомление пользователю
     await bot.send_message(
         chat_id=user_id,
-        text="❌ Запрос на продление подписки отклонен.\n\n"
-             "Свяжитесь с администратором для уточнения деталей.",
+        text=f"<tg-emoji emoji-id='5411225014148014586'>❌</tg-emoji> <b>Запрос на продление отклонен</b>\n\n"
+            "К сожалению, ваш запрос на продление подписки не был подтвержден.\n\n"
+            "Пожалуйста, свяжитесь с поддержкой для уточнения деталей.\n"
+            "Возможно, требуется дополнительная проверка оплаты.",
         reply_markup=InlineKeyboardMarkup(
             inline_keyboard=[
                 [InlineKeyboardButton(text="Моя подписка", callback_data="subscription", style="primary")]
@@ -1186,8 +1325,11 @@ async def renew_reject_callback(callback: types.CallbackQuery):
         parse_mode=ParseMode.HTML
     )
     
+    # Отправляем уведомление оператору
     await callback.message.answer(
-        f"❌ Запрос на продление подписки пользователя {user_id} отклонен",
+        f"<tg-emoji emoji-id='5411225014148014586'>❌</tg-emoji> <b>Продление отклонено</b>\n\n"
+        f"👤 Пользователь ID: {user_id}\n\n"
+        "Запрос на продление подписки отклонен.",
         parse_mode=ParseMode.HTML
     )
 
@@ -1264,6 +1406,26 @@ async def admin_contacts_callback(callback: types.CallbackQuery):
         await callback.message.answer(
             f"📞 <b>Текущие контакты:</b>\n\n{contact_text}\n\nВыберите действие:",
             reply_markup=contacts_management_keyboard,
+            parse_mode=ParseMode.HTML
+        )
+
+@router.callback_query(lambda callback: callback.data == "admin_broadcast")
+async def admin_broadcast_callback(callback: types.CallbackQuery):
+    await callback.answer()
+    
+    if is_admin(callback.from_user.id):
+        try:
+            await callback.message.delete()
+        except:
+            pass
+            
+        await callback.message.answer(
+            "📢 <b>Рассылка сообщений</b>\n\n"
+            "Используйте команду:\n"
+            "<code>/broadcast Ваше сообщение</code>\n\n"
+            "Пример:\n"
+            "<code>/broadcast 🔔 Внимание! Проводятся технические работы...</code>\n\n"
+            "Сообщение будет отправлено всем пользователям бота.",
             parse_mode=ParseMode.HTML
         )
 
