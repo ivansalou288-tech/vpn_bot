@@ -254,6 +254,89 @@ body {
     transform: scale(1.05);
 }
 
+/* App buttons styles */
+.app-step {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+}
+
+.app-buttons {
+    display: flex;
+    gap: 20px;
+    justify-content: center;
+    flex-wrap: wrap;
+    width: 100%;
+}
+
+.neon-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    padding: 16px 32px;
+    border-radius: 12px;
+    text-decoration: none;
+    font-weight: 700;
+    font-size: 1.1rem;
+    transition: all 0.3s ease;
+    border: 2px solid;
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
+}
+
+.neon-btn::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: inherit;
+    filter: brightness(1.2);
+    transition: left 0.3s ease;
+    z-index: -1;
+}
+
+.neon-btn:hover::before {
+    left: 0;
+}
+
+.android-btn {
+    background: linear-gradient(135deg, rgba(52, 168, 83, 0.3), rgba(52, 168, 83, 0.1));
+    border-color: #34a853;
+    color: #34a853;
+    box-shadow: 0 0 20px rgba(52, 168, 83, 0.5), inset 0 0 20px rgba(52, 168, 83, 0.1);
+}
+
+.android-btn:hover {
+    box-shadow: 0 0 40px rgba(52, 168, 83, 0.8), inset 0 0 20px rgba(52, 168, 83, 0.3);
+    transform: translateY(-3px);
+    border-color: #5ec76f;
+}
+
+.ios-btn {
+    background: linear-gradient(135deg, rgba(0, 255, 255, 0.3), rgba(0, 255, 255, 0.1));
+    border-color: #00ffff;
+    color: #00ffff;
+    box-shadow: 0 0 20px rgba(0, 255, 255, 0.5), inset 0 0 20px rgba(0, 255, 255, 0.1);
+}
+
+.ios-btn:hover {
+    box-shadow: 0 0 40px rgba(0, 255, 255, 0.8), inset 0 0 20px rgba(0, 255, 255, 0.3);
+    transform: translateY(-3px);
+    border-color: #00ffff;
+}
+
+.btn-icon {
+    font-size: 1.5rem;
+}
+
+.btn-text {
+    font-weight: 700;
+}
+
 /* Footer */
 .footer {
     padding: 40px 0;
@@ -339,6 +422,19 @@ body {
     
     .step-title {
         font-size: 1.5rem;
+    }
+    
+    .neon-btn {
+        padding: 12px 24px;
+        font-size: 1rem;
+    }
+    
+    .btn-icon {
+        font-size: 1.2rem;
+    }
+    
+    .app-buttons {
+        gap: 15px;
     }
 }
 
