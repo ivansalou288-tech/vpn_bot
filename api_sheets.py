@@ -30,26 +30,28 @@ def add_vpn_sale(user_id, username, months, price):
 
         wks = spreadsheet.sheet1
 
-        # Step 1: Find and clear old summary row
+        # Step 1: Find and clear old summary row by checking column D for SUM formula
         all_values = wks.get_all_values()
         summary_row_num = None
         for row_num in range(len(all_values), 1, -1):
             try:
-                cell = wks.acell(f"A{row_num}", value_render_option="FORMULA")
+                # Check the formula in column D of this row (where SUM formula is)
+                cell = wks.acell(f"D{row_num}", value_render_option='FORMULA')
                 cell_formula = cell.value if cell else ""
-                if cell_formula and isinstance(cell_formula, str) and "=SUM(" in cell_formula:
+                if cell_formula and isinstance(cell_formula, str) and cell_formula.startswith("=SUM("):
                     wks.range(f"A{row_num}:E{row_num}").clear()
                     summary_row_num = row_num
                     print(f"Cleared old summary at row {row_num}")
-                    time.sleep(0.3)
+                    time.sleep(0.5)
                     break
             except:
                 continue
-
-        # Step 2: Add new data row
+        
+        # Step 2: Add new data row (use the cleared summary row position if available)
         if summary_row_num:
             insert_row = summary_row_num
         else:
+            # Use get_all_values to get actual row count including empty rows
             all_values = wks.get_all_values()
             insert_row = len(all_values) + 1
 
@@ -60,14 +62,14 @@ def add_vpn_sale(user_id, username, months, price):
             value_input_option="USER_ENTERED"
         )
 
-        # Format data row
+        # Format data row with light gray background
         wks.format(f"A{insert_row}:E{insert_row}", {
             "backgroundColor": {"red": 0.95, "green": 0.95, "blue": 0.95}
         })
 
         print(f"Added VPN sale at row {insert_row}")
 
-        # Step 3: Add summary row
+        # Step 3: Add new summary row below the data
         summary_row = insert_row + 1
         sum_end = summary_row - 1
 
@@ -77,9 +79,9 @@ def add_vpn_sale(user_id, username, months, price):
             value_input_option="USER_ENTERED"
         )
 
-        # Format summary row
+        # Format summary row with purple background (like add_order)
         wks.format(f"A{summary_row}:E{summary_row}", {
-            "backgroundColor": {"red": 0.8, "green": 0.9, "blue": 1.0},
+            "backgroundColor": {"red": 0.8, "green": 0.6, "blue": 1.0},
             "textFormat": {"bold": True}
         })
 
