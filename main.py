@@ -22,6 +22,7 @@ from aiogram.utils.keyboard import InlineKeyboardMarkup, InlineKeyboardButton
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from api import add_client, getSubById, check_cantfree, add_to_cantfree, dell_client, get_clients, renew_subscription
+from api_sheets import add_vpn_sale
 
 OPERATOR_CHAT_ID = 1240656726
 
@@ -1037,6 +1038,9 @@ async def success_payment_handler(message: Message):
                     result = add_client(21, f"user_{message.from_user.id}", message.from_user.id, api_date)
                     print(f"Client added via stars payment: {result}")
                     
+                    # Записываем продажу в Google Sheets
+                    add_vpn_sale(message.from_user.id, message.from_user.username, time_months, price_rubles)
+                    
                     # Обновляем уведомление администратору о новой подписке
                     await bot.send_message(
                         OPERATOR_CHAT_ID,
@@ -1235,6 +1239,9 @@ async def approve_payment_callback(callback: types.CallbackQuery):
         api_date = end_time.strftime("%d.%m.%Y")
         result = add_client(21, f"user_{user_id}", user_id, api_date)
         print(f"Client added: {result}")
+        
+        # Записываем продажу в Google Sheets
+        add_vpn_sale(user_id, callback.from_user.username, time_months, price_rubles)
     except Exception as e:
         print(f"Error adding client: {e}")
 
@@ -1477,6 +1484,9 @@ async def renew_approve_callback(callback: types.CallbackQuery):
         new_expiry = renew_result.get('new_expiry')
         end_time = datetime.datetime.fromtimestamp(new_expiry / 1000)
         end_date_str = end_time.strftime("%d.%m.%Y")
+        
+        # Записываем продажу в Google Sheets
+        add_vpn_sale(user_id, callback.from_user.username, time_months, price_rubles)
         
         await bot.send_message(
             chat_id=user_id,
