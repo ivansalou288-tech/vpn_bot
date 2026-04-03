@@ -1547,6 +1547,114 @@
             background: rgba(186, 85, 255, 0.4);
             box-shadow: 0 0 20px rgba(186, 85, 255, 0.3);
         }
+
+        /* Subscription card styles */
+        .subscription-card {
+            background: rgba(138, 43, 226, 0.1);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(186, 85, 255, 0.2);
+            border-radius: 20px;
+            padding: 24px;
+            margin-bottom: 16px;
+        }
+
+        .subscription-card.empty {
+            text-align: center;
+            padding: 40px 24px;
+        }
+
+        .subscription-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+
+        .subscription-icon {
+            font-size: 28px;
+        }
+
+        .subscription-title {
+            font-size: 18px;
+            font-weight: 700;
+            color: #fff;
+        }
+
+        .subscription-details {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-bottom: 24px;
+        }
+
+        .sub-detail-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 16px;
+            background: rgba(138, 43, 226, 0.15);
+            border-radius: 12px;
+        }
+
+        .sub-label {
+            font-size: 14px;
+            color: rgba(255, 255, 255, 0.6);
+        }
+
+        .sub-value {
+            font-size: 14px;
+            font-weight: 600;
+            color: #fff;
+        }
+
+        .subscription-actions {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .sub-action-btn {
+            width: 100%;
+            padding: 14px 24px;
+            background: rgba(138, 43, 226, 0.3);
+            border: 1px solid rgba(186, 85, 255, 0.4);
+            border-radius: 14px;
+            color: #fff;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .sub-action-btn:hover {
+            background: rgba(186, 85, 255, 0.4);
+            box-shadow: 0 0 20px rgba(186, 85, 255, 0.3);
+        }
+
+        .sub-action-btn.primary {
+            background: linear-gradient(135deg, #ba55ff, #8a2be2);
+            border: none;
+            box-shadow: 0 4px 20px rgba(186, 85, 255, 0.4);
+        }
+
+        .sub-action-btn.primary:hover {
+            box-shadow: 0 6px 30px rgba(186, 85, 255, 0.6);
+            transform: translateY(-2px);
+        }
+
+        .subscription-message {
+            font-size: 14px;
+            color: rgba(255, 255, 255, 0.7);
+            margin: 16px 0;
+            line-height: 1.5;
+        }
+
+        .subscription-status {
+            text-align: center;
+            font-size: 16px;
+            color: rgba(255, 255, 255, 0.6);
+            padding: 40px 20px;
+        }
     </style>
 </head>
 <body>
@@ -1557,6 +1665,48 @@
 
         <!-- Подписка -->
         <div id="tab-subscription" class="tab-content">
+            <h1>Подписка</h1>
+            <div id="subscription-loading" class="subscription-status">Загрузка...</div>
+            <div id="subscription-content" style="display: none;">
+                <div class="subscription-card">
+                    <div class="subscription-header">
+                        <span class="subscription-icon">📡</span>
+                        <span class="subscription-title">Ваша подписка</span>
+                    </div>
+                    <div class="subscription-details">
+                        <div class="sub-detail-item">
+                            <span class="sub-label">Email:</span>
+                            <span class="sub-value" id="sub-email">-</span>
+                        </div>
+                        <div class="sub-detail-item">
+                            <span class="sub-label">Статус:</span>
+                            <span class="sub-value" id="sub-status">-</span>
+                        </div>
+                        <div class="sub-detail-item">
+                            <span class="sub-label">До окончания:</span>
+                            <span class="sub-value" id="sub-expiry">-</span>
+                        </div>
+                        <div class="sub-detail-item">
+                            <span class="sub-label">Трафик:</span>
+                            <span class="sub-value" id="sub-traffic">-</span>
+                        </div>
+                    </div>
+                    <div class="subscription-actions">
+                        <button class="sub-action-btn primary" onclick="renewSubscription()">Продлить подписку</button>
+                        <button class="sub-action-btn" onclick="copySubLink()">Скопировать ссылку</button>
+                    </div>
+                </div>
+            </div>
+            <div id="subscription-empty" style="display: none;">
+                <div class="subscription-card empty">
+                    <div class="subscription-header">
+                        <span class="subscription-icon">📭</span>
+                        <span class="subscription-title">Нет активной подписки</span>
+                    </div>
+                    <p class="subscription-message">У вас пока нет активной подписки. Приобретите подписку для доступа к VPN.</p>
+                    <button class="sub-action-btn primary" onclick="buySubscription()">Купить подписку</button>
+                </div>
+            </div>
         </div>
 
         <!-- Бонусы -->
@@ -1954,6 +2104,103 @@
             // Show nav island and hide Telegram BackButton
             document.getElementById('navIsland').style.display = 'flex';
             Telegram.WebApp.BackButton.hide();
+        }
+
+        // Subscription API functions
+        const API_BASE_URL = 'https://ezh-dev.ru:3000';
+
+        async function loadSubscription() {
+            if (!user) {
+                document.getElementById('subscription-loading').textContent = 'Ошибка: пользователь не найден';
+                return;
+            }
+
+            const telegramId = user.id;
+            
+            try {
+                const response = await fetch(`${API_BASE_URL}/subscription/${telegramId}`);
+                const data = await response.json();
+
+                if (data.success && data.subscription) {
+                    displaySubscription(data.subscription);
+                } else {
+                    showEmptySubscription();
+                }
+            } catch (error) {
+                console.error('Error loading subscription:', error);
+                document.getElementById('subscription-loading').textContent = 'Ошибка загрузки подписки';
+            }
+        }
+
+        function displaySubscription(sub) {
+            document.getElementById('subscription-loading').style.display = 'none';
+            document.getElementById('subscription-empty').style.display = 'none';
+            document.getElementById('subscription-content').style.display = 'block';
+
+            document.getElementById('sub-email').textContent = sub.email || 'N/A';
+            document.getElementById('sub-status').textContent = sub.enabled ? 'Активна' : 'Отключена';
+            document.getElementById('sub-expiry').textContent = sub.expiry_date || 'Бессрочно';
+            
+            const totalGB = sub.total_gb ? (sub.total_gb / (1024**3)).toFixed(2) + ' GB' : 'Не ограничен';
+            document.getElementById('sub-traffic').textContent = totalGB;
+        }
+
+        function showEmptySubscription() {
+            document.getElementById('subscription-loading').style.display = 'none';
+            document.getElementById('subscription-content').style.display = 'none';
+            document.getElementById('subscription-empty').style.display = 'block';
+        }
+
+        function renewSubscription() {
+            Telegram.WebApp.showPopup({
+                title: 'Продление подписки',
+                message: 'Выберите период продления:',
+                buttons: [
+                    { id: '1month', type: 'default', text: '1 месяц' },
+                    { id: '3months', type: 'default', text: '3 месяца' },
+                    { id: 'cancel', type: 'cancel', text: 'Отмена' }
+                ]
+            }, (buttonId) => {
+                if (buttonId !== 'cancel') {
+                    Telegram.WebApp.showAlert('Открываем оплату...');
+                }
+            });
+        }
+
+        function copySubLink() {
+            const subId = document.getElementById('sub-email').dataset.subId;
+            if (subId) {
+                const link = `${API_BASE_URL}/sub/${subId}`;
+                navigator.clipboard.writeText(link).then(() => {
+                    Telegram.WebApp.showAlert('Ссылка скопирована!');
+                });
+            }
+        }
+
+        function buySubscription() {
+            Telegram.WebApp.showPopup({
+                title: 'Покупка подписки',
+                message: 'Выберите тариф:',
+                buttons: [
+                    { id: '1month', type: 'default', text: '1 месяц' },
+                    { id: '3months', type: 'default', text: '3 месяца' },
+                    { id: 'cancel', type: 'cancel', text: 'Отмена' }
+                ]
+            }, (buttonId) => {
+                if (buttonId !== 'cancel') {
+                    Telegram.WebApp.showAlert('Открываем оплату...');
+                }
+            });
+        }
+
+        // Load subscription when subscription tab is clicked
+        document.querySelector('[data-tab="tab-subscription"]').addEventListener('click', () => {
+            loadSubscription();
+        });
+
+        // Also load on page load if user is already on subscription tab
+        if (document.getElementById('tab-subscription').classList.contains('active')) {
+            loadSubscription();
         }
     </script>
 </body>
