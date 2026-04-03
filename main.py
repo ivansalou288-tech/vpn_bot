@@ -1140,6 +1140,10 @@ async def process_sbp_payment(message, user_id, username, time_months, price_rub
     - price_rubles: цена в рублях
     - is_renewal: флаг продления (True/False)
     """
+    # ВРЕМЕННО: Для тестирования PayCore - 1 и 6 месяцев стоят 1 рубль
+    if time_months in [1, 6]:
+        price_rubles = 1
+    
     # Формируем текст времени
     months_text = "год" if time_months == 12 else f"{time_months} месяц{'а' if time_months > 1 and time_months < 5 else 'ев'}"
     
@@ -1200,7 +1204,6 @@ async def process_sbp_payment(message, user_id, username, time_months, price_rub
 @router.callback_query(lambda callback: callback.data.startswith("sbp_paid_"))
 async def sbp_paid_callback(callback: types.CallbackQuery):
     """Обработчик нажатия кнопки 'Я оплатил' - проверяет статус платежа"""
-    await callback.answer()
     
     # Извлекаем order_id из callback_data
     order_id = callback.data.replace("sbp_paid_", "")
@@ -1213,11 +1216,14 @@ async def sbp_paid_callback(callback: types.CallbackQuery):
         
         if status == "completed":
             # Платёж подтверждён
-            await callback.message.edit_text(
-                f"<tg-emoji emoji-id='5416081784641168838'>✅</tg-emoji> <b>Оплата подтверждена!</b>\n\n"
-                f"Спасибо за оплату. Оператор скоро активирует вашу подписку.",
-                parse_mode=ParseMode.HTML
-            )
+            try:
+                await callback.message.edit_text(
+                    f"<tg-emoji emoji-id='5416081784641168838'>✅</tg-emoji> <b>Оплата подтверждена!</b>\n\n"
+                    f"Спасибо за оплату. Оператор скоро активирует вашу подписку.",
+                    parse_mode=ParseMode.HTML
+                )
+            except Exception:
+                pass
             
             # Уведомляем оператора о подтверждении от пользователя
             await bot.send_message(
@@ -1228,40 +1234,26 @@ async def sbp_paid_callback(callback: types.CallbackQuery):
                 f"Проверьте поступление средств и активируйте подписку.",
                 parse_mode=ParseMode.HTML
             )
+            await callback.answer("✅ Оплата подтверждена!")
+            
         elif status == "pending":
-            # Платёж ещё в обработке
-            await callback.message.edit_text(
-                f"<tg-emoji emoji-id='5440621591387980068'>⏳</tg-emoji> <b>Платёж в обработке</b>\n\n"
-                f"Order ID: <code>{order_id}</code>\n\n"
-                f"Ваш платёж ещё обрабатывается. Пожалуйста, подождите несколько минут и проверьте снова.",
-                reply_markup=InlineKeyboardMarkup(
-                    inline_keyboard=[
-                        [InlineKeyboardButton(text="Проверить снова", callback_data=f"sbp_paid_{order_id}", style="primary")]
-                    ]
-                ),
-                parse_mode=ParseMode.HTML
+            # Платёж ещё в обработке - показываем popup
+            await callback.answer(
+                "⏳ Платёж ещё обрабатывается. Подождите несколько минут и проверьте снова.",
+                show_alert=True
             )
+            
         else:
             # Другой статус
-            await callback.message.edit_text(
-                f"<tg-emoji emoji-id='5411225014148014586'>❌</tg-emoji> <b>Статус платежа: {status}</b>\n\n"
-                f"Order ID: <code>{order_id}</code>\n\n"
-                f"Если у вас возникли вопросы, свяжитесь с поддержкой.",
-                parse_mode=ParseMode.HTML
+            await callback.answer(
+                f"❌ Статус платежа: {status}. Свяжитесь с поддержкой.",
+                show_alert=True
             )
     else:
         # Платёж не найден в БД
-        await callback.message.edit_text(
-            f"<tg-emoji emoji-id='5411225014148014586'>❌</tg-emoji> <b>Платёж не найден</b>\n\n"
-            f"Order ID: <code>{order_id}</code>\n\n"
-            f"Если вы уже оплатили, пожалуйста, подождите несколько минут. "
-            f"Если проблема сохраняется, свяжитесь с поддержкой.",
-            reply_markup=InlineKeyboardMarkup(
-                inline_keyboard=[
-                    [InlineKeyboardButton(text="Проверить снова", callback_data=f"sbp_paid_{order_id}", style="primary")]
-                ]
-            ),
-            parse_mode=ParseMode.HTML
+        await callback.answer(
+            "❌ Платёж не найден. Если вы уже оплатили, подождите несколько минут.",
+            show_alert=True
         )
 
 
