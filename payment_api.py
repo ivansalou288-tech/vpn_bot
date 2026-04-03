@@ -24,7 +24,7 @@ PAYCORE_API_KEY ='paycore__kzCrJ9vpN0pF7dkM%lc2D5V7/rKfbbV^ftafi%PXhH^='
 PAYCORE_API_URL = "https://pay.pay-core.ru/api/init"
 WEBHOOK_URL = 'https://ezh-dev.ru:2556/payment/webhook'
 BOT_TOKEN = "8358697144:AAGppsqXjG9S08nGLUpghL-jUfTz9H4gj58"
-OPERATOR_CHAT_ID = 8489038592
+OPERATOR_CHAT_ID = [1240656726, 1401086794]
 
 # Настройка БД
 Base = declarative_base()
@@ -37,6 +37,7 @@ class Payment(Base):
     id = Column(Integer, primary_key=True, index=True)
     order_id = Column(String, unique=True, index=True)  # Наш внутренний ID
     paycore_order_id = Column(String, unique=True, index=True, nullable=True)  # ID от PayCore
+    message_id = Column(Integer, nullable=True)  # ID сообщения в Telegram для редактирования
     amount = Column(Float)
     final_amount = Column(Float, nullable=True)
     commission_amount = Column(Float, nullable=True)
@@ -171,6 +172,14 @@ async def payment_webhook(data: PaymentWebhook):
             )
             print(f"[PayCore] Success message sent to user {user_id}")
             
+            # Удаляем старое сообщение об оплате, если есть message_id
+            if payment.message_id:
+                try:
+                    await bot.delete_message(chat_id=user_id, message_id=payment.message_id)
+                    print(f"[PayCore] Deleted old payment message {payment.message_id}")
+                except Exception as e:
+                    print(f"[PayCore] Could not delete old message: {e}")
+            
             # Уведомление оператору
             operator_message = (
                 f"<tg-emoji emoji-id='5416081784641168838'>💰</tg-emoji> <b>Новая оплата через СБП!</b>\n\n"
@@ -184,12 +193,13 @@ async def payment_webhook(data: PaymentWebhook):
                 f"Order ID: <code>{data.order_id}</code>"
             )
             
-            await bot.send_message(
-                chat_id=OPERATOR_CHAT_ID,
-                text=operator_message,
-                parse_mode=ParseMode.HTML
-            )
-            print(f"[PayCore] Operator notification sent")
+            for chat_id in OPERATOR_CHAT_ID:
+                await bot.send_message(
+                    chat_id=chat_id,
+                    text=operator_message,
+                    parse_mode=ParseMode.HTML
+                )
+                print(f"[PayCore] Operator notification sent to {chat_id}")
             
             # Закрываем сессию бота
             await bot.session.close()
@@ -296,6 +306,20 @@ def create_paycore_payment(amount: float, description: str, user_id: int, userna
             "error": str(e)
         }
 
+def update_payment_message_id(order_id: str, message_id: int):
+    """Обновляет ID сообщения в Telegram для платежа"""
+    db = SessionLocal()
+    try:
+        payment = db.query(Payment).filter(Payment.order_id == order_id).first()
+        if payment:
+            payment.message_id = message_id
+            db.commit()
+            print(f"[PayCore] Message ID {message_id} saved for order {order_id}")
+            return True
+        return False
+    finally:
+        db.close()
+
 def get_payment_status(order_id: str):
     """Получает статус платежа из БД"""
     db = SessionLocal()
@@ -308,6 +332,7 @@ def get_payment_status(order_id: str):
                 "amount": payment.amount,
                 "final_amount": payment.final_amount,
                 "commission": payment.commission_amount,
+                "message_id": payment.message_id,
                 "created_at": payment.created_at.isoformat() if payment.created_at else None
             }
         return {"exists": False}

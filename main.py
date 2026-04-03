@@ -24,7 +24,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from api import add_client, getSubById, check_cantfree, add_to_cantfree, dell_client, get_clients, renew_subscription
 from api_sheets import add_vpn_sale
-from payment_api import create_paycore_payment, get_payment_status, set_bot_instance
+from payment_api import create_paycore_payment, get_payment_status, set_bot_instance, update_payment_message_id
 
 OPERATOR_CHAT_ID = 1240656726
 
@@ -1115,7 +1115,7 @@ async def pay_sbp_callback(callback: types.CallbackQuery):
     username = callback.from_user.username
     
     # Проверяем, является ли пользователь оператором
-    if user_id != 8489038592:
+    if user_id != 8489038592 and user_id not in [1401086794]:
         await callback.message.answer(
             "<tg-emoji emoji-id='5416081784641168838'>🚧</tg-emoji> <b>В разработке</b>\n\n"
             "Оплата через СБП временно недоступна.\n"
@@ -1140,10 +1140,6 @@ async def process_sbp_payment(message, user_id, username, time_months, price_rub
     - price_rubles: цена в рублях
     - is_renewal: флаг продления (True/False)
     """
-    # ВРЕМЕННО: Для тестирования PayCore - 1 и 6 месяцев стоят 1 рубль
-    if time_months in [1, 6]:
-        price_rubles = 1
-    
     # Формируем текст времени
     months_text = "год" if time_months == 12 else f"{time_months} месяц{'а' if time_months > 1 and time_months < 5 else 'ев'}"
     
@@ -1167,24 +1163,26 @@ async def process_sbp_payment(message, user_id, username, time_months, price_rub
         order_id = result.get("order_id")
         payment_url = result.get("payment_url")
         
-        # Отправляем пользователю информацию об оплате
-        await message.answer(
-            f"<tg-emoji emoji-id='5251203410396458957'>💳</tg-emoji> <b>Оплата через СБП</b>\n\n"
-            f"<tg-emoji emoji-id='5440621591387980068'>👤</tg-emoji> Пользователь: @{username} (ID: {user_id})\n"
-            f"<tg-emoji emoji-id='5440621591387980068'>⏰</tg-emoji> Тип операции: {operation_type}\n"
+        # Отправляем пользователю информацию об оплате и сохраняем message_id
+        sent_message = await message.answer(
+            f"<tg-emoji emoji-id='5345956698253180145'>👤</tg-emoji> <b>Оплата через СБП</b>\n\n"
+            f"<tg-emoji emoji-id='5231012545799666522'>👤</tg-emoji> Пользователь: @{username} (ID: {user_id})\n"
             f"<tg-emoji emoji-id='5440621591387980068'>⏰</tg-emoji> Период: {months_text}\n"
             f"<tg-emoji emoji-id='5417924076503062111'>💰</tg-emoji> Сумма: {price_rubles}₽\n\n"
             f"<tg-emoji emoji-id='5440660757194744323'>📱</tg-emoji> <b>Ссылка для оплаты:</b>\n"
-            f"<a href='{payment_url}'>Нажмите здесь для оплаты</a>\n\n"
-            f"Order ID: <code>{order_id}</code>\n\n"
             "<tg-emoji emoji-id='5440621591387980068'>⏳</tg-emoji> После оплаты подписка будет активирована автоматически.",
             reply_markup=InlineKeyboardMarkup(
                 inline_keyboard=[
-                    [InlineKeyboardButton(text="Перейти к оплате", url=payment_url, style="primary")]
+                    [InlineKeyboardButton(text=f"Перейти к оплате({price_rubles}₽)", url=payment_url, style="success")]
                 ]
             ),
             parse_mode=ParseMode.HTML
         )
+        
+        # Сохраняем message_id для последующего редактирования
+        if sent_message and sent_message.message_id:
+            update_payment_message_id(order_id, sent_message.message_id)
+            print(f"[BOT] Message ID {sent_message.message_id} saved for order {order_id}")
     else:
         # Ошибка создания платежа
         error_msg = result.get('error', 'Неизвестная ошибка')
@@ -1558,7 +1556,7 @@ async def renew_pay_sbp_callback(callback: types.CallbackQuery):
     username = callback.from_user.username
     
     # Проверяем, является ли пользователь оператором
-    if user_id != 8489038592:
+    if user_id != 8489038592 and user_id not in [1401086794]:
         await callback.message.answer(
             "<tg-emoji emoji-id='5416081784641168838'>🚧</tg-emoji> <b>В разработке</b>\n\n"
             "Оплата через СБП временно недоступна.\n"
