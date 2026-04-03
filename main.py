@@ -931,9 +931,8 @@ async def select_price_callback(callback: types.CallbackQuery):
     # Создаем кнопку оплаты
     pay_keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="Оплатить картой", callback_data=f"confirm_pay_{time_months}_{price_rubles}", style="primary")],
-            [InlineKeyboardButton(text="Оплатить звездами", callback_data=f"pay_stars_{time_months}_{price_rubles}", style="primary")],
-            [InlineKeyboardButton(text="Оплата по СБП", callback_data=f"pay_sbp_{time_months}_{price_rubles}", style="primary")]
+            [InlineKeyboardButton(text="Оплата по СБП", callback_data=f"pay_sbp_{time_months}_{price_rubles}", style="primary")],
+            [InlineKeyboardButton(text="Оплатить звездами", callback_data=f"pay_stars_{time_months}_{price_rubles}", style="primary")]
         ]
     )
     
@@ -1114,19 +1113,7 @@ async def pay_sbp_callback(callback: types.CallbackQuery):
     user_id = callback.from_user.id
     username = callback.from_user.username
     
-    # Проверяем, является ли пользователь оператором
-    if user_id != 8489038592 and user_id not in [1401086794]:
-        await callback.message.answer(
-            "<tg-emoji emoji-id='5416081784641168838'>🚧</tg-emoji> <b>В разработке</b>\n\n"
-            "Оплата через СБП временно недоступна.\n"
-            "Мы работаем над добавлением этой функции.\n\n"
-            "Пожалуйста, воспользуйтесь другим способом оплаты.",
-            parse_mode=ParseMode.HTML
-        )
-        return
-    
-    # 
-    # Если пользователь - оператор, перенаправляем в функцию обработки СБП
+    # Перенаправляем в функцию обработки СБП (доступно всем)
     await process_sbp_payment(callback.message, user_id, username, time_months, price_rubles, is_renewal=False)
 
 
@@ -1140,8 +1127,14 @@ async def process_sbp_payment(message, user_id, username, time_months, price_rub
     - price_rubles: цена в рублях
     - is_renewal: флаг продления (True/False)
     """
-    if price_rubles == 150:
+    # Список ID операторов (для специальной цены 1 рубль)
+    OPERATOR_IDS = [8489038592, 1401086794]
+    
+    # Если пользователь - оператор, меняем цену на 1 рубль для тестирования
+    if user_id in OPERATOR_IDS:
         price_rubles = 1
+        print(f"[BOT] Operator detected, setting test price: 1 ruble")
+    
     # Формируем текст времени
     months_text = "год" if time_months == 12 else f"{time_months} месяц{'а' if time_months > 1 and time_months < 5 else 'ев'}"
     
@@ -1519,9 +1512,8 @@ async def renew_select_callback(callback: types.CallbackQuery):
     # Создаем кнопку оплаты
     pay_keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="Оплатить картой", callback_data=f"renew_confirm_pay_{time_months}_{price_rubles}", style="primary")],
-            [InlineKeyboardButton(text="Оплатить звездами", callback_data=f"renew_pay_stars_{time_months}_{price_rubles}", style="primary")],
-            [InlineKeyboardButton(text="Оплата по СБП", callback_data=f"renew_pay_sbp_{time_months}_{price_rubles}", style="primary")]
+            [InlineKeyboardButton(text="Оплата по СБП", callback_data=f"renew_pay_sbp_{time_months}_{price_rubles}", style="primary")],
+            [InlineKeyboardButton(text="Оплатить звездами", callback_data=f"renew_pay_stars_{time_months}_{price_rubles}", style="primary")]
         ]
     )
     
@@ -1557,18 +1549,7 @@ async def renew_pay_sbp_callback(callback: types.CallbackQuery):
     user_id = callback.from_user.id
     username = callback.from_user.username
     
-    # Проверяем, является ли пользователь оператором
-    if user_id != 8489038592 and user_id not in [1401086794]:
-        await callback.message.answer(
-            "<tg-emoji emoji-id='5416081784641168838'>🚧</tg-emoji> <b>В разработке</b>\n\n"
-            "Оплата через СБП временно недоступна.\n"
-            "Мы работаем над добавлением этой функции.\n\n"
-            "Пожалуйста, воспользуйтесь другим способом оплаты.",
-            parse_mode=ParseMode.HTML
-        )
-        return
-    
-    # Если пользователь - оператор, перенаправляем в функцию обработки СБП
+    # Перенаправляем в функцию обработки СБП (доступно всем)
     await process_sbp_payment(callback.message, user_id, username, time_months, price_rubles, is_renewal=True)
 
 @router.callback_query(lambda callback: callback.data.startswith("renew_confirm_pay_"))

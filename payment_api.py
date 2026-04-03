@@ -140,7 +140,9 @@ async def payment_webhook(data: PaymentWebhook):
         try:
             # Создаём бота для отправки сообщений
             bot = Bot(token=BOT_TOKEN)
-            profit = data.final_amount - data.commission_amount
+            # final_amount - это сумма после комиссии (прибыль)
+            # commission_amount - комиссия PayCore
+            profit = data.final_amount
             
             if subscription_result and subscription_result.get('success'):
                 user_message = (
