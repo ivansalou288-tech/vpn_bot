@@ -1502,24 +1502,58 @@
             font-weight: 700;
             color: #ba55ff;
         }
+
+        /* Legal pages (Privacy Policy & Public Offer) */
+        .legal-content {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .legal-section {
+            background: rgba(138, 43, 226, 0.1);
+            border: 1px solid rgba(186, 85, 255, 0.2);
+            border-radius: 16px;
+            padding: 20px;
+        }
+
+        .legal-section h3 {
+            font-size: 16px;
+            font-weight: 600;
+            color: #ba55ff;
+            margin-bottom: 12px;
+        }
+
+        .legal-section p {
+            font-size: 14px;
+            color: rgba(255, 255, 255, 0.8);
+            line-height: 1.6;
+        }
+
+        .back-btn {
+            width: 100%;
+            padding: 14px 24px;
+            background: rgba(138, 43, 226, 0.3);
+            border: 1px solid rgba(186, 85, 255, 0.4);
+            border-radius: 14px;
+            color: #fff;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-top: 8px;
+        }
+
+        .back-btn:hover {
+            background: rgba(186, 85, 255, 0.4);
+            box-shadow: 0 0 20px rgba(186, 85, 255, 0.3);
+        }
     </style>
 </head>
 <body>
     <div class="content">
         <!-- Главная -->
         <div id="tab-home" class="tab-content active">
-            <div class="clash-wrapper">
-                <button class="clash-btn" id="clashBtn">
-                    <div class="clash-ring"></div>
-                    <div class="clash-inner">
-                        <svg class="clash-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"></path>
-                        </svg>
-                    </div>
-                </button>
-                <p class="clash-status" id="clashStatus">Нажмите для подключения</p>
-                <button class="get-config-btn" id="getConfigBtn">Получить конфигурацию</button>
-            </div>
         </div>
 
         <!-- Подписка -->
@@ -1670,13 +1704,6 @@
         <!-- Профиль -->
         <div id="tab-profile" class="tab-content">
             <h1>Профиль</h1>
-            <div class="profile-header">
-                <div class="profile-avatar" id="profileAvatar">👤</div>
-                <div class="profile-info">
-                    <span class="profile-name" id="profileName">@username</span>
-                    <span class="profile-id" id="profileId">ID: 12345678</span>
-                </div>
-            </div>
             <div class="profile-status">
                 <div class="status-item">
                     <span class="status-label">Тариф</span>
@@ -1688,56 +1715,80 @@
                 </div>
             </div>
             <div class="profile-section">
-                <h3 class="profile-section-title">Настройки</h3>
-                <div class="setting-item">
-                    <div class="setting-info">
-                        <span class="setting-name">Автоподключение</span>
-                        <span class="setting-desc">Подключаться при запуске</span>
-                    </div>
-                    <label class="toggle">
-                        <input type="checkbox" id="autoConnect">
-                        <span class="toggle-slider"></span>
-                    </label>
-                </div>
-                <div class="setting-item">
-                    <div class="setting-info">
-                        <span class="setting-name">Уведомления</span>
-                        <span class="setting-desc">Push-уведомления</span>
-                    </div>
-                    <label class="toggle">
-                        <input type="checkbox" id="notifications" checked>
-                        <span class="toggle-slider"></span>
-                    </label>
-                </div>
-                <div class="setting-item">
-                    <div class="setting-info">
-                        <span class="setting-name">Тема</span>
-                        <span class="setting-desc">Темная тема</span>
-                    </div>
-                    <label class="toggle">
-                        <input type="checkbox" id="darkTheme" checked disabled>
-                        <span class="toggle-slider"></span>
-                    </label>
-                </div>
-            </div>
-            <div class="profile-section">
-                <h3 class="profile-section-title">Поддержка</h3>
                 <button class="profile-btn">
                     <span>💬 Чат поддержки</span>
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <polyline points="9 18 15 12 9 6"></polyline>
                     </svg>
                 </button>
-                <button class="profile-btn">
-                    <span>❓ FAQ</span>
+            </div>
+            <div class="profile-section">
+                <button class="profile-btn" onclick="showPrivacyPolicy()">
+                    <span>� Политика конфиденциальности</span>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="9 18 15 12 9 6"></polyline>
+                    </svg>
+                </button>
+                <button class="profile-btn" onclick="showPublicOffer()">
+                    <span>📄 Публичная оферта</span>
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <polyline points="9 18 15 12 9 6"></polyline>
                     </svg>
                 </button>
             </div>
-            <button class="logout-btn">Выйти</button>
         </div>
-    </div>
+
+        <!-- Политика конфиденциальности -->
+        <div id="tab-privacy" class="tab-content">
+            <h1>Политика конфиденциальности</h1>
+            <div class="legal-content">
+                <div class="legal-section">
+                    <h3>1. Общие положения</h3>
+                    <p>Настоящая Политика конфиденциальности определяет порядок обработки и защиты персональных данных пользователей VPN-сервиса.</p>
+                </div>
+                <div class="legal-section">
+                    <h3>2. Сбор данных</h3>
+                    <p>Мы собираем минимально необходимую информацию: ID Telegram, username, данные о подписке. Мы не храним логи активности и историю подключений.</p>
+                </div>
+                <div class="legal-section">
+                    <h3>3. Использование данных</h3>
+                    <p>Персональные данные используются исключительно для предоставления VPN-услуг и связи с пользователем.</p>
+                </div>
+                <div class="legal-section">
+                    <h3>4. Защита данных</h3>
+                    <p>Мы применяем современные методы шифрования и защиты информации. Данные передаются по защищенным каналам связи.</p>
+                </div>
+                <button class="back-btn" onclick="showProfile()">← Назад в профиль</button>
+            </div>
+        </div>
+
+        <!-- Публичная оферта -->
+        <div id="tab-offer" class="tab-content">
+            <h1>Публичная оферта</h1>
+            <div class="legal-content">
+                <div class="legal-section">
+                    <h3>1. Термины и определения</h3>
+                    <p>Публичная оферта — предложение предоставить доступ к VPN-сервису любому пользователю Telegram.</p>
+                </div>
+                <div class="legal-section">
+                    <h3>2. Предмет договора</h3>
+                    <p>Исполнитель предоставляет Пользователю услуги VPN-доступа на условиях и по тарифам, указанным в мини-приложении.</p>
+                </div>
+                <div class="legal-section">
+                    <h3>3. Оплата услуг</h3>
+                    <p>Оплата производится через Telegram Payments. Услуги предоставляются на срок, соответствующий выбранному тарифу.</p>
+                </div>
+                <div class="legal-section">
+                    <h3>4. Возврат средств</h3>
+                    <p>Возврат средств возможен в течение 7 дней с момента оплаты при условии неначисления трафика.</p>
+                </div>
+                <div class="legal-section">
+                    <h3>5. Ограничения</h3>
+                    <p>Запрещено использование сервиса для незаконной деятельности, спама, DDoS-атак и нарушения прав третьих лиц.</p>
+                </div>
+                <button class="back-btn" onclick="showProfile()">← Назад в профиль</button>
+            </div>
+        </div>
 
     <!-- Floating Navigation Island -->
     <nav class="nav-island" id="navIsland">
@@ -1867,6 +1918,28 @@
                 }
             });
         });
+
+        // Legal pages navigation
+        function showPrivacyPolicy() {
+            document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
+            document.getElementById('tab-privacy').classList.add('active');
+            // Hide nav island when showing legal pages
+            document.getElementById('navIsland').style.display = 'none';
+        }
+
+        function showPublicOffer() {
+            document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
+            document.getElementById('tab-offer').classList.add('active');
+            // Hide nav island when showing legal pages
+            document.getElementById('navIsland').style.display = 'none';
+        }
+
+        function showProfile() {
+            document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
+            document.getElementById('tab-profile').classList.add('active');
+            // Show nav island back
+            document.getElementById('navIsland').style.display = 'flex';
+        }
     </script>
 </body>
 </html>
