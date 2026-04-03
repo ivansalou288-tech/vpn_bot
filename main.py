@@ -144,11 +144,9 @@ async def get_all_prices():
     async with AsyncSessionLocal() as session:
         result = await session.execute(select(Price).order_by(Price.time))
         prices = result.scalars().all()
-        print(f"Raw prices from DB: {prices}")  # Отладочная информация
         
         # Если в БД нет цен, добавляем тестовые
         if not prices:
-            print("No prices found in DB, adding default prices...")
             default_prices = [
                 {"time": 1, "price": 150},
                 {"time": 3, "price": 425},
@@ -164,12 +162,10 @@ async def get_all_prices():
                 session.add(new_price)
             
             await session.commit()
-            print("Default prices added to database")
             
             # Повторно получаем цены
             result = await session.execute(select(Price).order_by(Price.time))
             prices = result.scalars().all()
-            print(f"Prices after adding defaults: {prices}")
         
         return prices
 
@@ -197,7 +193,6 @@ async def add_or_update_user(user: types.User):
             existing_user.last_active = current_time
             await session.commit()
             await session.refresh(existing_user)
-            print(f"User {user.id} updated: {user.username or user.first_name}")
         else:
             # Если пользователя нет, создаем нового
             new_user = User(
@@ -211,7 +206,6 @@ async def add_or_update_user(user: types.User):
             session.add(new_user)
             await session.commit()
             await session.refresh(new_user)
-            print(f"New user {user.id} registered: {user.username or user.first_name}")
         
         return existing_user or new_user
 
@@ -236,16 +230,13 @@ async def broadcast_to_all_users(message_text: str):
                 parse_mode=ParseMode.HTML
             )
             success_count += 1
-            print(f"Message sent to user {user.telegram_id}: {user.username or user.first_name}")
             
             # Небольшая задержка чтобы не превысить лимиты Telegram
             await asyncio.sleep(0.1)
             
         except Exception as e:
             error_count += 1
-            print(f"Failed to send message to user {user.telegram_id}: {e}")
     
-    print(f"Broadcast completed: {success_count} successful, {error_count} errors")
     return {"success": success_count, "errors": error_count}
 
 # Код бота
@@ -268,7 +259,6 @@ async def handle_referral_bonus(user_id: int, referrer_id: int):
     try:
         # Проверяем, не получал ли реферер уже бонус за этого пользователя
         if referrer_id in referral_bonus_given:
-            print(f"Referrer {referrer_id} already received referral bonus")
             return
         
         # Проверяем подписку реферала
@@ -324,10 +314,9 @@ async def handle_referral_bonus(user_id: int, referrer_id: int):
         
         # Помечаем, что бонус выдан рефереру
         referral_bonus_given[referrer_id] = True
-        print(f"Referral bonus given to referrer {referrer_id} for user {user_id}")
         
     except Exception as e:
-        print(f"Error handling referral bonus for referrer {referrer_id}: {e}")
+        pass
 
 async def add_referral_days_to_user(user_id: int, days: int):
     """Добавляет дни к подписке пользователя или создает новую подписку"""
@@ -347,9 +336,9 @@ async def add_referral_days_to_user(user_id: int, days: int):
                 renew_result = renew_subscription(user_id, days)
                 
                 if renew_result.get('success'):
-                    print(f"Added {days} days to existing subscription for user {user_id}")
+                    pass
                 else:
-                    print(f"Failed to add days to subscription for user {user_id}: {renew_result.get('error')}")
+                    pass
         else:
             # У пользователя нет подписки - создаем новую на 2 дня
             current_time = datetime.datetime.now()
@@ -357,13 +346,9 @@ async def add_referral_days_to_user(user_id: int, days: int):
             api_date = end_time.strftime("%d.%m.%Y")
             
             add_result = add_client(21, f"user_{user_id}", user_id, api_date)
-            if add_result.get('success'):
-                print(f"Created new {days} day subscription for user {user_id}")
-            else:
-                print(f"Failed to create subscription for user {user_id}: {add_result}")
-                
+            pass
     except Exception as e:
-        print(f"Error adding referral days for user {user_id}: {e}")
+        pass
 
 async def check_subscription_expirations():
     """Проверяет истечение подписок и отправляет напоминания"""
@@ -372,7 +357,6 @@ async def check_subscription_expirations():
         clients_data = get_clients()
         
         if not clients_data.get('success'):
-            print("Failed to get clients for expiration check")
             return
         
         inbounds = clients_data.get('obj', [])
@@ -429,9 +413,8 @@ async def check_subscription_expirations():
                                 if tg_id not in sent_reminders:
                                     sent_reminders[tg_id] = {}
                                 sent_reminders[tg_id]["hour"] = current_time.timestamp()
-    
     except Exception as e:
-        print(f"Error checking subscription expirations: {e}")
+        pass
 
 async def send_expiration_reminder(tg_id: int, reminder_type: str, expiry_date: datetime.datetime):
     """Отправляет напоминание об окончании подписки"""
@@ -469,10 +452,9 @@ async def send_expiration_reminder(tg_id: int, reminder_type: str, expiry_date: 
             reply_markup=reply_markup,
             parse_mode=ParseMode.HTML
         )
-        print(f"Sent {reminder_type} reminder to user {tg_id}")
         
     except Exception as e:
-        print(f"Error sending reminder to user {tg_id}: {e}")
+        pass
 
 # Проверка на админа
 def is_admin(user_id: int) -> bool:
@@ -548,7 +530,6 @@ async def start(message: types.Message):
     
     if len(args) > 1 and args[1].isdigit():
         referrer_id = int(args[1])
-        print(f"User {message.from_user.id} joined with referrer {referrer_id}")
     
     if is_admin(message.from_user.id):
         await message.answer(
@@ -698,7 +679,6 @@ async def get_subscription_info(tg_id: int):
     try:
         result = getSubById(tg_id)
 
-        print(result)
         if result.get('success'):
             # Проверяем время подписки
             expiry_time = result['client_info']['expiryTime']
@@ -825,18 +805,14 @@ async def buy_subscription_callback(callback: types.CallbackQuery):
     # Получаем все цены из БД
     prices = await get_all_prices()
     
-    print(f"Prices from DB: {prices}")  # Отладочная информация
-    
     # Создаем клавиатуру с ценами из БД
     keyboard_buttons = []
     for price in prices:
         months_text = "год" if price.time == 12 else f"{price.time} месяц{'а' if price.time > 1 and price.time < 5 else 'ев'}"
         button_text = f"{months_text} - {price.price}₽"
         keyboard_buttons.append([InlineKeyboardButton(text=button_text, callback_data=f"select_price_{price.time}_{price.price}", style="primary")])
-        print(f"Created button: {button_text} with callback_data: select_price_{price.time}_{price.price}")
     
     buy_keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
-    print(f"Keyboard buttons: {keyboard_buttons}")
     
     await callback.message.answer(
         "<tg-emoji emoji-id='5251203410396458957'>🛒</tg-emoji> <b>Покупка подписки</b>\n\n"
