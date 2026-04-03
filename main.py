@@ -23,6 +23,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from api import add_client, getSubById, check_cantfree, add_to_cantfree, dell_client, get_clients, renew_subscription
 from api_sheets import add_vpn_sale
+from payment_api import create_paycore_payment, get_payment_status
 
 OPERATOR_CHAT_ID = 1240656726
 
@@ -1114,7 +1115,7 @@ async def pay_sbp_callback(callback: types.CallbackQuery):
 
 
 async def process_sbp_payment(message, user_id, username, time_months, price_rubles, is_renewal=False):
-    """Функция обработки оплаты через СБП
+    """Функция обработки оплаты через СБП через PayCore API
     
     Принимает все необходимые данные для оплаты:
     - user_id: ID пользователя Telegram
@@ -1128,23 +1129,115 @@ async def process_sbp_payment(message, user_id, username, time_months, price_rub
     
     operation_type = "Продление" if is_renewal else "Покупка"
     
-    # Пока просто выводим все данные для тестирования
-    await message.answer(
-        f"<tg-emoji emoji-id='5251203410396458957'>💳</tg-emoji> <b>Оплата через СБП</b>\n\n"
-        f"<tg-emoji emoji-id='5440621591387980068'>👤</tg-emoji> Пользователь: @{username} (ID: {user_id})\n"
-        f"<tg-emoji emoji-id='5440621591387980068'>⏰</tg-emoji> Тип операции: {operation_type}\n"
-        f"<tg-emoji emoji-id='5440621591387980068'>⏰</tg-emoji> Период: {months_text}\n"
-        f"<tg-emoji emoji-id='5417924076503062111'>💰</tg-emoji> Сумма: {price_rubles}₽\n\n"
-        f"<tg-emoji emoji-id='5440660757194744323'>📱</tg-emoji> <b>Реквизиты СБП:</b>\n"
-        f"<code>+7 962 992 91-38</code> (Т-Банк)\n\n"
-        "После оплаты нажмите 'Я оплатил'",
-        reply_markup=InlineKeyboardMarkup(
-            inline_keyboard=[
-                [InlineKeyboardButton(text="Я оплатил", callback_data=f"sbp_paid_{user_id}_{time_months}_{price_rubles}_{int(is_renewal)}", style="primary")]
-            ]
-        ),
-        parse_mode=ParseMode.HTML
+    # Создаём платёж через PayCore API
+    result = create_paycore_payment(
+        amount=float(price_rubles),
+        description=f"{operation_type} VPN на {months_text}",
+        user_id=user_id,
+        username=username,
+        time_months=time_months,
+        is_renewal=is_renewal
     )
+    
+    if result.get("success"):
+        order_id = result.get("order_id")
+        payment_url = result.get("payment_url")
+        
+        # Отправляем пользователю информацию об оплате
+        await message.answer(
+            f"<tg-emoji emoji-id='5251203410396458957'>💳</tg-emoji> <b>Оплата через СБП</b>\n\n"
+            f"<tg-emoji emoji-id='5440621591387980068'>👤</tg-emoji> Пользователь: @{username} (ID: {user_id})\n"
+            f"<tg-emoji emoji-id='5440621591387980068'>⏰</tg-emoji> Тип операции: {operation_type}\n"
+            f"<tg-emoji emoji-id='5440621591387980068'>⏰</tg-emoji> Период: {months_text}\n"
+            f"<tg-emoji emoji-id='5417924076503062111'>💰</tg-emoji> Сумма: {price_rubles}₽\n\n"
+            f"<tg-emoji emoji-id='5440660757194744323'>📱</tg-emoji> <b>Ссылка для оплаты:</b>\n"
+            f"<a href='{payment_url}'>Нажмите здесь для оплаты</a>\n\n"
+            f"Order ID: <code>{order_id}</code>\n\n"
+            "После оплаты нажмите 'Я оплатил'",
+            reply_markup=InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [InlineKeyboardButton(text="Перейти к оплате", url=payment_url, style="primary")],
+                    [InlineKeyboardButton(text="Я оплатил", callback_data=f"sbp_paid_{order_id}", style="primary")]
+                ]
+            ),
+            parse_mode=ParseMode.HTML
+        )
+    else:
+        # Ошибка создания платежа
+        await message.answer(
+            f"<tg-emoji emoji-id='5411225014148014586'>❌</tg-emoji> <b>Ошибка создания платежа</b>\n\n"
+            f"Не удалось создать платёж: {result.get('error', 'Неизвестная ошибка')}\n\n"
+            "Пожалуйста, попробуйте позже или выберите другой способ оплаты.",
+            parse_mode=ParseMode.HTML
+        )
+
+
+@router.callback_query(lambda callback: callback.data.startswith("sbp_paid_"))
+async def sbp_paid_callback(callback: types.CallbackQuery):
+    """Обработчик нажатия кнопки 'Я оплатил' - проверяет статус платежа"""
+    await callback.answer()
+    
+    # Извлекаем order_id из callback_data
+    order_id = callback.data.replace("sbp_paid_", "")
+    
+    # Проверяем статус платежа
+    payment_info = get_payment_status(order_id)
+    
+    if payment_info.get("exists"):
+        status = payment_info.get("status")
+        
+        if status == "completed":
+            # Платёж подтверждён
+            await callback.message.edit_text(
+                f"<tg-emoji emoji-id='5416081784641168838'>✅</tg-emoji> <b>Оплата подтверждена!</b>\n\n"
+                f"Спасибо за оплату. Оператор скоро активирует вашу подписку.",
+                parse_mode=ParseMode.HTML
+            )
+            
+            # Уведомляем оператора о подтверждении от пользователя
+            await bot.send_message(
+                OPERATOR_CHAT_ID,
+                f"<tg-emoji emoji-id='5416081784641168838'>💰</tg-emoji> <b>Пользователь подтвердил оплату СБП</b>\n\n"
+                f"Order ID: <code>{order_id}</code>\n"
+                f"Статус: {status}\n\n"
+                f"Проверьте поступление средств и активируйте подписку.",
+                parse_mode=ParseMode.HTML
+            )
+        elif status == "pending":
+            # Платёж ещё в обработке
+            await callback.message.edit_text(
+                f"<tg-emoji emoji-id='5440621591387980068'>⏳</tg-emoji> <b>Платёж в обработке</b>\n\n"
+                f"Order ID: <code>{order_id}</code>\n\n"
+                f"Ваш платёж ещё обрабатывается. Пожалуйста, подождите несколько минут и проверьте снова.",
+                reply_markup=InlineKeyboardMarkup(
+                    inline_keyboard=[
+                        [InlineKeyboardButton(text="Проверить снова", callback_data=f"sbp_paid_{order_id}", style="primary")]
+                    ]
+                ),
+                parse_mode=ParseMode.HTML
+            )
+        else:
+            # Другой статус
+            await callback.message.edit_text(
+                f"<tg-emoji emoji-id='5411225014148014586'>❌</tg-emoji> <b>Статус платежа: {status}</b>\n\n"
+                f"Order ID: <code>{order_id}</code>\n\n"
+                f"Если у вас возникли вопросы, свяжитесь с поддержкой.",
+                parse_mode=ParseMode.HTML
+            )
+    else:
+        # Платёж не найден в БД
+        await callback.message.edit_text(
+            f"<tg-emoji emoji-id='5411225014148014586'>❌</tg-emoji> <b>Платёж не найден</b>\n\n"
+            f"Order ID: <code>{order_id}</code>\n\n"
+            f"Если вы уже оплатили, пожалуйста, подождите несколько минут. "
+            f"Если проблема сохраняется, свяжитесь с поддержкой.",
+            reply_markup=InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [InlineKeyboardButton(text="Проверить снова", callback_data=f"sbp_paid_{order_id}", style="primary")]
+                ]
+            ),
+            parse_mode=ParseMode.HTML
+        )
 
 
 @router.callback_query(lambda callback: callback.data.startswith("renew_pay_stars_"))
@@ -1373,18 +1466,14 @@ async def renew_subscription_callback(callback: types.CallbackQuery):
     # Получаем все цены из БД
     prices = await get_all_prices()
     
-    print(f"Prices from DB (renew): {prices}")  # Отладочная информация
-    
     # Создаем клавиатуру с ценами из БД
     keyboard_buttons = []
     for price in prices:
         months_text = "год" if price.time == 12 else f"{price.time} месяц{'а' if price.time > 1 and price.time < 5 else 'ев'}"
         button_text = f"{months_text} - {price.price}₽"
         keyboard_buttons.append([InlineKeyboardButton(text=button_text, callback_data=f"renew_select_price_{price.time}_{price.price}", style="primary")])
-        print(f"Created renew button: {button_text} with callback_data: renew_select_price_{price.time}_{price.price}")
     
     renew_keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
-    print(f"Renew keyboard buttons: {keyboard_buttons}")
     
     await callback.message.answer(
         "<tg-emoji emoji-id='5406756500108501710'>⏰</tg-emoji> <b>Продление подписки</b>\n\n"

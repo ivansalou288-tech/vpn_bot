@@ -1,0 +1,36 @@
+пример кода:
+import requests
+
+url = "https://pay.pay-core.ru/api/init"
+
+headers = {
+    "Content-Type": "application/json",
+    "X-Api-Key": "ВАШ_API_KEY"
+}
+
+data = {
+    "method": "card",
+    "amount": 1000.5,
+    "description": "Order payment",
+    "returnLink": "https://example.com/notification"
+}
+
+response = requests.post(url, json=data, headers=headers)
+
+print("Status:", response.status_code)
+print("Response:", response.text)
+
+на вашу ссылку(returnLink) отправится POST запрос где в боди передастся что то по типу такого
+
+{
+  "order_id": "ABC123",
+  "amount": 100,
+  "final_amount": 95,
+  "commission_amount": 5,
+  "method": "card"
+}
+
+тебе нужно сделать эндпоинт на fastapi который будет принимать этот запрос и сохранять его в бд
+и писать операту что оплата и писать комисию и итоговую прибыль
+
+(мой токен: 'paycore__kzCrJ9vpN0pF7dkM%lc2D5V7/rKfbbV^ftafi%PXhH^=')
