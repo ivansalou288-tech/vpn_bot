@@ -15,9 +15,9 @@ from api import add_client, renew_subscription
 from api_sheets import add_vpn_sale
 
 # Получаем токен из переменной окружения или используем дефолтный
-PAYCORE_API_KEY = os.getenv("PAYCORE_API_KEY", "paycore__kzCrJ9vpN0pF7dkM%lc2D5V7/rKfbbV^ftafi%PXhH^=")
+PAYCORE_API_KEY ='paycore__kzCrJ9vpN0pF7dkM%lc2D5V7/rKfbbV^ftafi%PXhH^='
 PAYCORE_API_URL = "https://pay.pay-core.ru/api/init"
-WEBHOOK_URL = os.getenv("WEBHOOK_URL", "https://ezh-dev.ru:2556/payment/webhook")
+WEBHOOK_URL = 'https://ezh-dev.ru:2556/payment/webhook'
 
 # Настройка БД
 Base = declarative_base()
@@ -73,6 +73,7 @@ def set_bot_instance(bot):
 
 @app.post("/payment/webhook")
 async def payment_webhook(data: PaymentWebhook):
+    print(f"[PayCore] Webhook received: {data}")
     """Endpoint для приёма уведомлений от PayCore - автоматически создаёт подписку"""
     db = SessionLocal()
     try:
