@@ -1132,6 +1132,7 @@ async def pay_sbp_callback(callback: types.CallbackQuery):
         )
         return
     
+    # 
     # Если пользователь - оператор, перенаправляем в функцию обработки СБП
     await process_sbp_payment(callback.message, user_id, username, time_months, price_rubles, is_renewal=False)
 
