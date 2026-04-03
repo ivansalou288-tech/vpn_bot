@@ -73,8 +73,12 @@ def set_bot_instance(bot):
 
 @app.post("/payment/webhook")
 async def payment_webhook(data: PaymentWebhook):
-    print(f"[PayCore] Webhook received: {data}")
     """Endpoint для приёма уведомлений от PayCore - автоматически создаёт подписку"""
+    print(f"[PayCore] ========== WEBHOOK RECEIVED ==========")
+    print(f"[PayCore] Webhook received: {data}")
+    print(f"[PayCore] order_id: {data.order_id}")
+    print(f"[PayCore] amount: {data.amount}")
+    print(f"[PayCore] status: completed (implicit)")
     db = SessionLocal()
     try:
         # Ищем платёж в БД
