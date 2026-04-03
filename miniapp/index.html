@@ -2107,19 +2107,40 @@
         }
 
         // Subscription API functions
-        const API_BASE_URL = 'https://ezh-dev.ru:2500';
+        const API_BASE_URL = 'https://ezh-dev.ru';
 
         async function loadSubscription() {
             if (!user) {
                 document.getElementById('subscription-loading').textContent = 'Ошибка: пользователь не найден';
+                console.error('User not found in Telegram WebApp');
                 return;
             }
 
             const telegramId = user.id;
+            console.log('Loading subscription for telegramId:', telegramId);
             
             try {
-                const response = await fetch(`${API_BASE_URL}/subscription/${telegramId}`);
+                const url = `${API_BASE_URL}/subscription/${telegramId}`;
+                console.log('Fetching from:', url);
+                
+                const response = await fetch(url, {
+                    method: 'GET',
+                    mode: 'cors',
+                    headers: {
+                        'Accept': 'application/json',
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                console.log('Response status:', response.status);
+                console.log('Response headers:', [...response.headers.entries()]);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
                 const data = await response.json();
+                console.log('Response data:', data);
 
                 if (data.success && data.subscription) {
                     displaySubscription(data.subscription);
@@ -2128,7 +2149,9 @@
                 }
             } catch (error) {
                 console.error('Error loading subscription:', error);
-                document.getElementById('subscription-loading').textContent = 'Ошибка загрузки подписки';
+                console.error('Error name:', error.name);
+                console.error('Error message:', error.message);
+                document.getElementById('subscription-loading').textContent = 'Ошибка загрузки: ' + error.message;
             }
         }
 

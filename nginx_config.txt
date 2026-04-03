@@ -1,0 +1,56 @@
+server {
+    listen 443 ssl;
+    server_name ezh-dev.ru;
+
+    # SSL сертификаты Let's Encrypt
+    ssl_certificate /etc/letsencrypt/live/ezh-dev.ru/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/ezh-dev.ru/privkey.pem;
+
+    # API endpoints
+    location /subscription/ {
+        proxy_pass http://localhost:2500;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+        
+        # CORS headers
+        add_header 'Access-Control-Allow-Origin' '*' always;
+        add_header 'Access-Control-Allow-Methods' 'GET, POST, PUT, DELETE, OPTIONS' always;
+        add_header 'Access-Control-Allow-Headers' '*' always;
+        
+        # Handle OPTIONS preflight
+        if ($request_method = 'OPTIONS') {
+            add_header 'Access-Control-Allow-Origin' '*';
+            add_header 'Access-Control-Allow-Methods' 'GET, POST, PUT, DELETE, OPTIONS';
+            add_header 'Access-Control-Allow-Headers' '*';
+            add_header 'Access-Control-Max-Age' 1728000;
+            add_header 'Content-Type' 'text/plain; charset=utf-8';
+            add_header 'Content-Length' 0;
+            return 204;
+        }
+    }
+
+    location /health {
+        proxy_pass http://localhost:2500/health;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+
+    # MiniApp статические файлы
+    location / {
+        root /path/to/your/miniapp;
+        try_files $uri $uri/ /index.html;
+    }
+}
+
+# HTTP to HTTPS redirect
+server {
+    listen 80;
+    server_name ezh-dev.ru;
+    return 301 https://$server_name$request_uri;
+}

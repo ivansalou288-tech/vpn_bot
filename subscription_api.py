@@ -11,7 +11,18 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"]
 )
+
+
+@app.options("/{path:path}")
+async def options_handler(path: str):
+    from fastapi.responses import Response
+    return Response(status_code=200, headers={
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "*",
+        "Access-Control-Allow-Headers": "*"
+    })
 
 
 @app.get("/subscription/{telegram_id}")
