@@ -1704,6 +1704,13 @@
         <!-- Профиль -->
         <div id="tab-profile" class="tab-content">
             <h1>Профиль</h1>
+            <div class="profile-header">
+                <div class="profile-avatar" id="profileAvatar">👤</div>
+                <div class="profile-info">
+                    <span class="profile-name" id="profileName">@username</span>
+                    <span class="profile-id" id="profileId">ID: 12345678</span>
+                </div>
+            </div>
             <div class="profile-status">
                 <div class="status-item">
                     <span class="status-label">Тариф</span>
@@ -1724,7 +1731,7 @@
             </div>
             <div class="profile-section">
                 <button class="profile-btn" onclick="showPrivacyPolicy()">
-                    <span>� Политика конфиденциальности</span>
+                    <span>🔒 Политика конфиденциальности</span>
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <polyline points="9 18 15 12 9 6"></polyline>
                     </svg>
@@ -1833,6 +1840,12 @@
         // Initialize Telegram WebApp
         Telegram.WebApp.ready();
         Telegram.WebApp.expand();
+        Telegram.WebApp.requestFullscreen();
+
+        // Enable BackButton API for legal pages
+        Telegram.WebApp.BackButton.onClick(() => {
+            showProfile();
+        });
 
         // Load user data from Telegram WebApp
         const user = Telegram.WebApp.initDataUnsafe?.user;
@@ -1923,22 +1936,25 @@
         function showPrivacyPolicy() {
             document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
             document.getElementById('tab-privacy').classList.add('active');
-            // Hide nav island when showing legal pages
+            // Hide nav island and show Telegram BackButton
             document.getElementById('navIsland').style.display = 'none';
+            Telegram.WebApp.BackButton.show();
         }
 
         function showPublicOffer() {
             document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
             document.getElementById('tab-offer').classList.add('active');
-            // Hide nav island when showing legal pages
+            // Hide nav island and show Telegram BackButton
             document.getElementById('navIsland').style.display = 'none';
+            Telegram.WebApp.BackButton.show();
         }
 
         function showProfile() {
             document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
             document.getElementById('tab-profile').classList.add('active');
-            // Show nav island back
+            // Show nav island and hide Telegram BackButton
             document.getElementById('navIsland').style.display = 'flex';
+            Telegram.WebApp.BackButton.hide();
         }
     </script>
 </body>
