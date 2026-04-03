@@ -28,7 +28,8 @@ class Payment(Base):
     __tablename__ = "payments"
     
     id = Column(Integer, primary_key=True, index=True)
-    order_id = Column(String, unique=True, index=True)
+    order_id = Column(String, unique=True, index=True)  # Наш внутренний ID
+    paycore_order_id = Column(String, unique=True, index=True, nullable=True)  # ID от PayCore
     amount = Column(Float)
     final_amount = Column(Float, nullable=True)
     commission_amount = Column(Float, nullable=True)
@@ -81,10 +82,15 @@ async def payment_webhook(data: PaymentWebhook):
     print(f"[PayCore] status: completed (implicit)")
     db = SessionLocal()
     try:
-        # Ищем платёж в БД
-        payment = db.query(Payment).filter(Payment.order_id == data.order_id).first()
+        # Ищем платёж в БД по paycore_order_id
+        payment = db.query(Payment).filter(Payment.paycore_order_id == data.order_id).first()
         
         if not payment:
+            # Fallback: попробуем найти по нашему order_id (на всякий случай)
+            payment = db.query(Payment).filter(Payment.order_id == data.order_id).first()
+        
+        if not payment:
+            print(f"[PayCore] Payment not found for order_id: {data.order_id}")
             raise HTTPException(status_code=404, detail="Payment not found")
         
         # Обновляем информацию о платеже
@@ -238,6 +244,7 @@ def create_paycore_payment(amount: float, description: str, user_id: int, userna
             try:
                 payment = Payment(
                     order_id=order_id,
+                    paycore_order_id=response_data.get("order_id"),  # Сохраняем PayCore ID
                     amount=amount,
                     method="sbp",
                     user_id=user_id,
