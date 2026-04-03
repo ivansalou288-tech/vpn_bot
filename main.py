@@ -1140,6 +1140,8 @@ async def process_sbp_payment(message, user_id, username, time_months, price_rub
     - price_rubles: цена в рублях
     - is_renewal: флаг продления (True/False)
     """
+    if price_rubles == 150:
+        price_rubles = 1
     # Формируем текст времени
     months_text = "год" if time_months == 12 else f"{time_months} месяц{'а' if time_months > 1 and time_months < 5 else 'ев'}"
     
@@ -1169,11 +1171,11 @@ async def process_sbp_payment(message, user_id, username, time_months, price_rub
             f"<tg-emoji emoji-id='5231012545799666522'>👤</tg-emoji> Пользователь: @{username} (ID: {user_id})\n"
             f"<tg-emoji emoji-id='5440621591387980068'>⏰</tg-emoji> Период: {months_text}\n"
             f"<tg-emoji emoji-id='5417924076503062111'>💰</tg-emoji> Сумма: {price_rubles}₽\n\n"
-            f"<tg-emoji emoji-id='5440660757194744323'>📱</tg-emoji> <b>Ссылка для оплаты:</b>\n"
+
             "<tg-emoji emoji-id='5440621591387980068'>⏳</tg-emoji> После оплаты подписка будет активирована автоматически.",
             reply_markup=InlineKeyboardMarkup(
                 inline_keyboard=[
-                    [InlineKeyboardButton(text=f"Перейти к оплате({price_rubles}₽)", url=payment_url, style="success")]
+                    [InlineKeyboardButton(text=f"Перейти к оплате ({price_rubles}₽)", url=payment_url, style="success")]
                 ]
             ),
             parse_mode=ParseMode.HTML
