@@ -1129,6 +1129,8 @@ async def process_sbp_payment(message, user_id, username, time_months, price_rub
     
     operation_type = "Продление" if is_renewal else "Покупка"
     
+    print(f"[BOT] Starting SBP payment: user={user_id}, amount={price_rubles}, type={operation_type}")
+    
     # Создаём платёж через PayCore API
     result = create_paycore_payment(
         amount=float(price_rubles),
@@ -1138,6 +1140,8 @@ async def process_sbp_payment(message, user_id, username, time_months, price_rub
         time_months=time_months,
         is_renewal=is_renewal
     )
+    
+    print(f"[BOT] PayCore result: {result}")
     
     if result.get("success"):
         order_id = result.get("order_id")
@@ -1164,9 +1168,14 @@ async def process_sbp_payment(message, user_id, username, time_months, price_rub
         )
     else:
         # Ошибка создания платежа
+        error_msg = result.get('error', 'Неизвестная ошибка')
+        status_code = result.get('status_code', 'N/A')
+        full_response = result.get('full_response', {})
+        print(f"[BOT] Payment creation FAILED: error='{error_msg}', status={status_code}, full_response={full_response}")
+        
         await message.answer(
             f"<tg-emoji emoji-id='5411225014148014586'>❌</tg-emoji> <b>Ошибка создания платежа</b>\n\n"
-            f"Не удалось создать платёж: {result.get('error', 'Неизвестная ошибка')}\n\n"
+            f"Не удалось создать платёж: {error_msg}\n\n"
             "Пожалуйста, попробуйте позже или выберите другой способ оплаты.",
             parse_mode=ParseMode.HTML
         )

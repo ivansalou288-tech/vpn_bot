@@ -118,9 +118,13 @@ async def payment_webhook(data: PaymentWebhook):
 def create_paycore_payment(amount: float, description: str, user_id: int, username: str = None, time_months: int = 1, is_renewal: bool = False):
     """Создаёт платёж через PayCore API"""
     
+    print(f"[PayCore] Creating payment: amount={amount}, user_id={user_id}, username={username}")
+    
     # Генерируем уникальный order_id
     import uuid
     order_id = f"vpn_{user_id}_{int(datetime.utcnow().timestamp())}_{uuid.uuid4().hex[:8]}"
+    
+    print(f"[PayCore] Generated order_id: {order_id}")
     
     headers = {
         "Content-Type": "application/json",
@@ -128,7 +132,7 @@ def create_paycore_payment(amount: float, description: str, user_id: int, userna
     }
     
     data = {
-        "method": "sbp",  # или "card" для карт
+        "method": "sbp",
         "amount": amount,
         "description": description,
         "returnLink": WEBHOOK_URL,
@@ -141,11 +145,20 @@ def create_paycore_payment(amount: float, description: str, user_id: int, userna
         }
     }
     
+    print(f"[PayCore] Request URL: {PAYCORE_API_URL}")
+    print(f"[PayCore] Request headers: {headers}")
+    print(f"[PayCore] Request data: {data}")
+    
     try:
         response = requests.post(PAYCORE_API_URL, json=data, headers=headers, timeout=30)
+        print(f"[PayCore] Response status: {response.status_code}")
+        print(f"[PayCore] Response body: {response.text}")
+        
         response_data = response.json()
+        print(f"[PayCore] Parsed response: {response_data}")
         
         if response.status_code == 200 and response_data.get("success"):
+            print(f"[PayCore] Payment created successfully, order_id: {order_id}")
             # Сохраняем платёж в БД
             db = SessionLocal()
             try:
@@ -161,6 +174,7 @@ def create_paycore_payment(amount: float, description: str, user_id: int, userna
                 )
                 db.add(payment)
                 db.commit()
+                print(f"[PayCore] Payment saved to DB: {order_id}")
                 
                 return {
                     "success": True,
@@ -171,13 +185,19 @@ def create_paycore_payment(amount: float, description: str, user_id: int, userna
             finally:
                 db.close()
         else:
+            error_msg = response_data.get("message", "Unknown error")
+            print(f"[PayCore] Error creating payment: {error_msg}, status: {response.status_code}")
             return {
                 "success": False,
-                "error": response_data.get("message", "Unknown error"),
-                "status_code": response.status_code
+                "error": error_msg,
+                "status_code": response.status_code,
+                "full_response": response_data
             }
             
     except Exception as e:
+        print(f"[PayCore] Exception during payment creation: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return {
             "success": False,
             "error": str(e)
