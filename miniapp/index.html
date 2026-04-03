@@ -1655,6 +1655,79 @@
             color: rgba(255, 255, 255, 0.6);
             padding: 40px 20px;
         }
+
+        /* Debug panel styles */
+        .debug-panel {
+            background: rgba(26, 10, 46, 0.95);
+            border: 1px solid rgba(186, 85, 255, 0.4);
+            border-radius: 16px;
+            padding: 16px;
+            margin-top: 20px;
+            font-family: monospace;
+            font-size: 12px;
+        }
+
+        .debug-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid rgba(186, 85, 255, 0.2);
+        }
+
+        .debug-close {
+            background: none;
+            border: none;
+            color: #fff;
+            cursor: pointer;
+            font-size: 16px;
+        }
+
+        .debug-content {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .debug-row {
+            display: flex;
+            justify-content: space-between;
+            gap: 10px;
+        }
+
+        .debug-label {
+            color: rgba(255, 255, 255, 0.6);
+        }
+
+        .debug-value {
+            color: #ba55ff;
+            word-break: break-all;
+        }
+
+        .debug-response {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 10px;
+            border-radius: 8px;
+            margin-top: 8px;
+            white-space: pre-wrap;
+            word-break: break-all;
+            color: rgba(255, 255, 255, 0.8);
+            max-height: 200px;
+            overflow-y: auto;
+        }
+
+        .debug-toggle-btn {
+            margin-top: 20px;
+            padding: 10px 16px;
+            background: rgba(138, 43, 226, 0.3);
+            border: 1px solid rgba(186, 85, 255, 0.4);
+            border-radius: 12px;
+            color: #fff;
+            font-size: 13px;
+            cursor: pointer;
+            width: 100%;
+        }
     </style>
 </head>
 <body>
@@ -1707,6 +1780,33 @@
                     <button class="sub-action-btn primary" onclick="buySubscription()">Купить подписку</button>
                 </div>
             </div>
+            <!-- Debug Panel -->
+            <div class="debug-panel" id="debugPanel" style="display: none;">
+                <div class="debug-header">
+                    <span>🔧 Отладка</span>
+                    <button onclick="toggleDebug()" class="debug-close">✕</button>
+                </div>
+                <div class="debug-content">
+                    <div class="debug-row">
+                        <span class="debug-label">User ID:</span>
+                        <span class="debug-value" id="debugUserId">-</span>
+                    </div>
+                    <div class="debug-row">
+                        <span class="debug-label">API URL:</span>
+                        <span class="debug-value" id="debugApiUrl">-</span>
+                    </div>
+                    <div class="debug-row">
+                        <span class="debug-label">Status:</span>
+                        <span class="debug-value" id="debugStatus">-</span>
+                    </div>
+                    <div class="debug-row">
+                        <span class="debug-label">Error:</span>
+                        <span class="debug-value" id="debugError">-</span>
+                    </div>
+                    <pre class="debug-response" id="debugResponse">Response: -</pre>
+                </div>
+            </div>
+            <button class="debug-toggle-btn" onclick="toggleDebug()" id="debugToggleBtn">🔧 Отладка</button>
         </div>
 
         <!-- Бонусы -->
@@ -2107,40 +2207,52 @@
         }
 
         // Subscription API functions
-        const API_BASE_URL = 'https://ezh-dev.ru';
+        const API_BASE_URL = 'https://ezh-dev.ru:2500';
+
+        // Debug panel functions
+        function toggleDebug() {
+            const panel = document.getElementById('debugPanel');
+            const btn = document.getElementById('debugToggleBtn');
+            if (panel.style.display === 'none') {
+                panel.style.display = 'block';
+                btn.textContent = '🔧 Скрыть отладку';
+            } else {
+                panel.style.display = 'none';
+                btn.textContent = '🔧 Отладка';
+            }
+        }
+
+        function updateDebug(userId, url, status, error, response) {
+            document.getElementById('debugUserId').textContent = userId || '-';
+            document.getElementById('debugApiUrl').textContent = url || '-';
+            document.getElementById('debugStatus').textContent = status || '-';
+            document.getElementById('debugError').textContent = error || '-';
+            document.getElementById('debugResponse').textContent = response ? JSON.stringify(response, null, 2) : 'Response: -';
+        }
 
         async function loadSubscription() {
             if (!user) {
                 document.getElementById('subscription-loading').textContent = 'Ошибка: пользователь не найден';
-                console.error('User not found in Telegram WebApp');
+                updateDebug('not found', '-', 'error', 'User not found', null);
                 return;
             }
 
             const telegramId = user.id;
-            console.log('Loading subscription for telegramId:', telegramId);
+            const url = `${API_BASE_URL}/subscription/${telegramId}`;
+            
+            updateDebug(telegramId, url, 'loading...', '-', null);
             
             try {
-                const url = `${API_BASE_URL}/subscription/${telegramId}`;
-                console.log('Fetching from:', url);
-                
                 const response = await fetch(url, {
                     method: 'GET',
                     mode: 'cors',
                     headers: {
-                        'Accept': 'application/json',
-                        'Content-Type': 'application/json'
+                        'Accept': 'application/json'
                     }
                 });
                 
-                console.log('Response status:', response.status);
-                console.log('Response headers:', [...response.headers.entries()]);
-                
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-                
                 const data = await response.json();
-                console.log('Response data:', data);
+                updateDebug(telegramId, url, response.status, '-', data);
 
                 if (data.success && data.subscription) {
                     displaySubscription(data.subscription);
@@ -2148,9 +2260,8 @@
                     showEmptySubscription();
                 }
             } catch (error) {
+                updateDebug(telegramId, url, 'error', error.message, null);
                 console.error('Error loading subscription:', error);
-                console.error('Error name:', error.name);
-                console.error('Error message:', error.message);
                 document.getElementById('subscription-loading').textContent = 'Ошибка загрузки: ' + error.message;
             }
         }
