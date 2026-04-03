@@ -14,10 +14,17 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from api import add_client, renew_subscription
 from api_sheets import add_vpn_sale
 
+# Импортируем aiogram для отправки сообщений
+from aiogram import Bot
+from aiogram.enums import ParseMode
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+
 # Получаем токен из переменной окружения или используем дефолтный
 PAYCORE_API_KEY ='paycore__kzCrJ9vpN0pF7dkM%lc2D5V7/rKfbbV^ftafi%PXhH^='
 PAYCORE_API_URL = "https://pay.pay-core.ru/api/init"
 WEBHOOK_URL = 'https://ezh-dev.ru:2556/payment/webhook'
+BOT_TOKEN = "8358697144:AAGppsqXjG9S08nGLUpghL-jUfTz9H4gj58"
+OPERATOR_CHAT_ID = 8489038592
 
 # Настройка БД
 Base = declarative_base()
@@ -129,12 +136,10 @@ async def payment_webhook(data: PaymentWebhook):
             print(f"[PayCore] Failed to record sale in sheets: {e}")
         
         # Уведомляем пользователя и оператора
-        if bot_instance:
+        try:
+            # Создаём бота для отправки сообщений
+            bot = Bot(token=BOT_TOKEN)
             profit = data.final_amount - data.commission_amount
-            
-            # Уведомление пользователю
-            from aiogram.enums import ParseMode
-            from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
             
             if subscription_result and subscription_result.get('success'):
                 user_message = (
@@ -157,14 +162,14 @@ async def payment_webhook(data: PaymentWebhook):
                 ]
             )
             
-            asyncio.create_task(
-                bot_instance.send_message(
-                    chat_id=user_id,
-                    text=user_message,
-                    reply_markup=user_keyboard,
-                    parse_mode=ParseMode.HTML
-                )
+            # Отправляем сообщение пользователю
+            await bot.send_message(
+                chat_id=user_id,
+                text=user_message,
+                reply_markup=user_keyboard,
+                parse_mode=ParseMode.HTML
             )
+            print(f"[PayCore] Success message sent to user {user_id}")
             
             # Уведомление оператору
             operator_message = (
@@ -179,13 +184,20 @@ async def payment_webhook(data: PaymentWebhook):
                 f"Order ID: <code>{data.order_id}</code>"
             )
             
-            asyncio.create_task(
-                bot_instance.send_message(
-                    chat_id=8489038592,  # OPERATOR_CHAT_ID
-                    text=operator_message,
-                    parse_mode=ParseMode.HTML
-                )
+            await bot.send_message(
+                chat_id=OPERATOR_CHAT_ID,
+                text=operator_message,
+                parse_mode=ParseMode.HTML
             )
+            print(f"[PayCore] Operator notification sent")
+            
+            # Закрываем сессию бота
+            await bot.session.close()
+            
+        except Exception as e:
+            print(f"[PayCore] Failed to send notifications: {e}")
+            import traceback
+            traceback.print_exc()
         
         return {"status": "success", "message": "Payment processed and subscription created"}
         
