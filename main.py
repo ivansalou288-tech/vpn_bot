@@ -1122,7 +1122,7 @@ async def pay_sbp_callback(callback: types.CallbackQuery):
     username = callback.from_user.username
     
     # Проверяем, является ли пользователь оператором
-    if user_id != OPERATOR_CHAT_ID:
+    if user_id != 8489038592:
         await callback.message.answer(
             "<tg-emoji emoji-id='5416081784641168838'>🚧</tg-emoji> <b>В разработке</b>\n\n"
             "Оплата через СБП временно недоступна.\n"
