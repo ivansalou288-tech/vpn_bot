@@ -1177,11 +1177,10 @@ async def process_sbp_payment(message, user_id, username, time_months, price_rub
             f"<tg-emoji emoji-id='5440660757194744323'>📱</tg-emoji> <b>Ссылка для оплаты:</b>\n"
             f"<a href='{payment_url}'>Нажмите здесь для оплаты</a>\n\n"
             f"Order ID: <code>{order_id}</code>\n\n"
-            "После оплаты нажмите 'Я оплатил'",
+            "<tg-emoji emoji-id='5440621591387980068'>⏳</tg-emoji> После оплаты подписка будет активирована автоматически.",
             reply_markup=InlineKeyboardMarkup(
                 inline_keyboard=[
-                    [InlineKeyboardButton(text="Перейти к оплате", url=payment_url, style="primary")],
-                    [InlineKeyboardButton(text="Я оплатил", callback_data=f"sbp_paid_{order_id}", style="primary")]
+                    [InlineKeyboardButton(text="Перейти к оплате", url=payment_url, style="primary")]
                 ]
             ),
             parse_mode=ParseMode.HTML

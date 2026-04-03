@@ -7,6 +7,12 @@ from datetime import datetime
 import asyncio
 import requests
 import os
+import sys
+
+# Добавляем путь для импорта api.py
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+from api import add_client, renew_subscription
+from api_sheets import add_vpn_sale
 
 # Получаем токен из переменной окружения или используем дефолтный
 PAYCORE_API_KEY = os.getenv("PAYCORE_API_KEY", "paycore__kzCrJ9vpN0pF7dkM%lc2D5V7/rKfbbV^ftafi%PXhH^=")
@@ -67,7 +73,7 @@ def set_bot_instance(bot):
 
 @app.post("/payment/webhook")
 async def payment_webhook(data: PaymentWebhook):
-    """Endpoint для приёма уведомлений от PayCore"""
+    """Endpoint для приёма уведомлений от PayCore - автоматически создаёт подписку"""
     db = SessionLocal()
     try:
         # Ищем платёж в БД
@@ -84,30 +90,93 @@ async def payment_webhook(data: PaymentWebhook):
         
         db.commit()
         
-        # Уведомляем оператора
+        # Автоматически создаём или продлеваем подписку
+        user_id = payment.user_id
+        time_months = payment.time_months
+        is_renewal = bool(payment.is_renewal)
+        username = payment.username or f"user_{user_id}"
+        
+        # Рассчитываем дату окончания подписки
+        from datetime import timedelta
+        current_time = datetime.now()
+        end_time = current_time + timedelta(days=time_months * 31)
+        end_date_str = end_time.strftime("%d.%m.%Y")
+        
+        subscription_result = None
+        
+        if is_renewal:
+            # Продлеваем существующую подписку
+            subscription_result = renew_subscription(user_id, time_months)
+        else:
+            # Создаём новую подписку
+            subscription_result = add_client(21, username, user_id, end_date_str)
+        
+        # Записываем продажу в Google Sheets
+        try:
+            add_vpn_sale(user_id, username, time_months, data.amount)
+        except Exception as e:
+            print(f"[PayCore] Failed to record sale in sheets: {e}")
+        
+        # Уведомляем пользователя и оператора
         if bot_instance:
             profit = data.final_amount - data.commission_amount
-            message = (
+            
+            # Уведомление пользователю
+            from aiogram.enums import ParseMode
+            from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+            
+            if subscription_result and subscription_result.get('success'):
+                user_message = (
+                    f"<tg-emoji emoji-id='5416081784641168838'>✅</tg-emoji> <b>Оплата успешна!</b>\n\n"
+                    f"<tg-emoji emoji-id='5417924076503062111'>💰</tg-emoji> Сумма: {data.amount}₽\n"
+                    f"<tg-emoji emoji-id='5440621591387980068'>⏰</tg-emoji> Период: {time_months} мес.\n"
+                    f"<tg-emoji emoji-id='5440621591387980068'>📅</tg-emoji> Действует до: {end_date_str}\n\n"
+                    f"{'Подписка продлена' if is_renewal else 'Подписка активирована'}! 🎉"
+                )
+            else:
+                user_message = (
+                    f"<tg-emoji emoji-id='5416081784641168838'>✅</tg-emoji> <b>Оплата получена!</b>\n\n"
+                    f"Ваша оплата на {data.amount}₽ получена.\n"
+                    f"Оператор скоро активирует вашу подписку."
+                )
+            
+            user_keyboard = InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [InlineKeyboardButton(text="Моя подписка", callback_data="subscription", style="primary")]
+                ]
+            )
+            
+            asyncio.create_task(
+                bot_instance.send_message(
+                    chat_id=user_id,
+                    text=user_message,
+                    reply_markup=user_keyboard,
+                    parse_mode=ParseMode.HTML
+                )
+            )
+            
+            # Уведомление оператору
+            operator_message = (
                 f"<tg-emoji emoji-id='5416081784641168838'>💰</tg-emoji> <b>Новая оплата через СБП!</b>\n\n"
                 f"<tg-emoji emoji-id='5440621591387980068'>👤</tg-emoji> Пользователь: @{payment.username or 'N/A'} (ID: {payment.user_id})\n"
-                f"<tg-emoji emoji-id='5440621591387980068'>⏰</tg-emoji> Тип: {'Продление' if payment.is_renewal else 'Покупка'}\n"
+                f"<tg-emoji emoji-id='5440621591387980068'>⏰</tg-emoji> Тип: {'Продление' if is_renewal else 'Покупка'}\n"
                 f"<tg-emoji emoji-id='5440621591387980068'>📅</tg-emoji> Период: {payment.time_months} мес.\n\n"
                 f"<tg-emoji emoji-id='5417924076503062111'>💵</tg-emoji> Сумма: {data.amount}₽\n"
                 f"<tg-emoji emoji-id='5416081784641168838'>📉</tg-emoji> Комиссия: {data.commission_amount}₽\n"
                 f"<tg-emoji emoji-id='5282843764451195532'>💎</tg-emoji> <b>Прибыль: {profit}₽</b>\n\n"
+                f"<tg-emoji emoji-id='5416081784641168838'>✅</tg-emoji> Подписка {'продлена' if is_renewal else 'создана'} автоматически\n"
                 f"Order ID: <code>{data.order_id}</code>"
             )
             
-            from aiogram.enums import ParseMode
             asyncio.create_task(
                 bot_instance.send_message(
-                    chat_id=payment.user_id,  # или OPERATOR_CHAT_ID
-                    text=message,
+                    chat_id=8489038592,  # OPERATOR_CHAT_ID
+                    text=operator_message,
                     parse_mode=ParseMode.HTML
                 )
             )
         
-        return {"status": "success", "message": "Payment processed"}
+        return {"status": "success", "message": "Payment processed and subscription created"}
         
     except Exception as e:
         db.rollback()
