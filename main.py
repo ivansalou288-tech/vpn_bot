@@ -24,7 +24,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from api import add_client, getSubById, check_cantfree, add_to_cantfree, dell_client, get_clients, renew_subscription
 from api_sheets import add_vpn_sale
-from payment_api import create_paycore_payment, get_payment_status
+from payment_api import create_paycore_payment, get_payment_status, set_bot_instance
 
 OPERATOR_CHAT_ID = 1240656726
 
@@ -2092,6 +2092,11 @@ async def main():
     dp.pre_checkout_query.register(pre_checkout_handler)
     dp.message.register(success_payment_handler, F.successful_payment)
     dp.include_router(router)
+    
+    # Передаём бота в payment_api для отправки уведомлений
+    set_bot_instance(bot)
+    print("[BOT] Bot instance set for payment_api")
+    
     await dp.start_polling(bot)
     
 
