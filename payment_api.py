@@ -138,9 +138,9 @@ async def payment_webhook(data: PaymentWebhook):
             
             if subscription_result and subscription_result.get('success'):
                 user_message = (
-                    f"<tg-emoji emoji-id='5416081784641168838'>✅</tg-emoji> <b>Оплата успешна!</b>\n\n"
-                    f"<tg-emoji emoji-id='5417924076503062111'>💰</tg-emoji> Сумма: {data.amount}₽\n"
+                    f"<tg-emoji emoji-id='5416081784641168838'>✅</tg-emoji> <b>Оплата успешно завершена!</b>\n\n"
                     f"<tg-emoji emoji-id='5440621591387980068'>⏰</tg-emoji> Период: {time_months} мес.\n"
+                    f"<tg-emoji emoji-id='5417924076503062111'>💰</tg-emoji> Оплачено: {data.amount}₽\n"
                     f"<tg-emoji emoji-id='5440621591387980068'>📅</tg-emoji> Действует до: {end_date_str}\n\n"
                     f"{'Подписка продлена' if is_renewal else 'Подписка активирована'}! 🎉"
                 )
