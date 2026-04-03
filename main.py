@@ -13,6 +13,7 @@ from apscheduler.triggers.interval import IntervalTrigger
 from sqlalchemy import create_engine, Column, Integer, String, select
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from sqlalchemy.orm import Session, sessionmaker, declarative_base
+from sqlalchemy.exc import IntegrityError
 
 from aiogram import Bot, Dispatcher, Router, types, F
 from aiogram.filters import Command
@@ -180,35 +181,50 @@ async def get_price(time_months: int):
 # Асинхронная функция для добавления/обновления пользователя
 async def add_or_update_user(user: types.User):
     async with AsyncSessionLocal() as session:
-        # Ищем пользователя с указанным telegram_id
-        result = await session.execute(select(User).filter(User.telegram_id == user.id))
-        existing_user = result.scalar_one_or_none()
-        
         current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         
-        if existing_user:
-            # Если пользователь существует, обновляем его данные и время последней активности
-            existing_user.username = user.username
-            existing_user.first_name = user.first_name
-            existing_user.last_name = user.last_name
-            existing_user.last_active = current_time
-            await session.commit()
-            await session.refresh(existing_user)
-        else:
-            # Если пользователя нет, создаем нового
-            new_user = User(
-                telegram_id=user.id,
-                username=user.username,
-                first_name=user.first_name,
-                last_name=user.last_name,
-                registered_at=current_time,
-                last_active=current_time
-            )
-            session.add(new_user)
-            await session.commit()
-            await session.refresh(new_user)
-        
-        return existing_user or new_user
+        try:
+            # Ищем пользователя с указанным telegram_id
+            result = await session.execute(select(User).filter(User.telegram_id == user.id))
+            existing_user = result.scalar_one_or_none()
+            
+            if existing_user:
+                # Если пользователь существует, обновляем его данные и время последней активности
+                existing_user.username = user.username
+                existing_user.first_name = user.first_name
+                existing_user.last_name = user.last_name
+                existing_user.last_active = current_time
+                await session.commit()
+                await session.refresh(existing_user)
+                return existing_user
+            else:
+                # Если пользователя нет, создаем нового
+                new_user = User(
+                    telegram_id=user.id,
+                    username=user.username,
+                    first_name=user.first_name,
+                    last_name=user.last_name,
+                    registered_at=current_time,
+                    last_active=current_time
+                )
+                session.add(new_user)
+                await session.commit()
+                await session.refresh(new_user)
+                return new_user
+                
+        except IntegrityError:
+            # Пользователь уже был создан (race condition) - обновляем его
+            await session.rollback()
+            result = await session.execute(select(User).filter(User.telegram_id == user.id))
+            existing_user = result.scalar_one_or_none()
+            if existing_user:
+                existing_user.username = user.username
+                existing_user.first_name = user.first_name
+                existing_user.last_name = user.last_name
+                existing_user.last_active = current_time
+                await session.commit()
+                await session.refresh(existing_user)
+            return existing_user
 
 # Асинхронная функция для получения всех пользователей
 async def get_all_users():
