@@ -1,0 +1,1846 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>VPN App</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #1a0a2e 0%, #2d1b4e 50%, #0f0518 100%);
+            min-height: 100vh;
+            color: #fff;
+            overflow-x: hidden;
+        }
+
+        .content {
+            padding: 20px;
+            padding-bottom: 120px;
+            min-height: 100vh;
+        }
+
+        .tab-content {
+            display: none;
+            animation: fadeIn 0.3s ease;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Floating Navigation Island */
+        .nav-island {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            padding: 8px 12px;
+            background: rgba(138, 43, 226, 0.15);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(186, 85, 255, 0.3);
+            border-radius: 28px;
+            box-shadow: 
+                0 8px 32px rgba(138, 43, 226, 0.4),
+                0 0 20px rgba(186, 85, 255, 0.2),
+                inset 0 1px 0 rgba(255, 255, 255, 0.1);
+            z-index: 1000;
+        }
+
+        .nav-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+            padding: 10px 14px;
+            border-radius: 20px;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            background: transparent;
+            border: none;
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 10px;
+            font-weight: 500;
+            min-width: 56px;
+        }
+
+        .nav-item:hover {
+            color: rgba(255, 255, 255, 0.9);
+        }
+
+        .nav-item.active {
+            background: linear-gradient(135deg, rgba(186, 85, 255, 0.4) 0%, rgba(138, 43, 226, 0.4) 100%);
+            color: #fff;
+            box-shadow: 
+                0 0 20px rgba(186, 85, 255, 0.6),
+                inset 0 1px 0 rgba(255, 255, 255, 0.2);
+        }
+
+        .nav-item.active::before {
+            content: '';
+            position: absolute;
+            inset: -1px;
+            border-radius: 20px;
+            padding: 1px;
+            background: linear-gradient(135deg, #ba55ff, #8a2be2);
+            -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+            mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+            -webkit-mask-composite: xor;
+            mask-composite: exclude;
+        }
+
+        .nav-icon {
+            width: 22px;
+            height: 22px;
+            transition: all 0.3s ease;
+        }
+
+        .nav-item.active .nav-icon {
+            filter: drop-shadow(0 0 8px rgba(186, 85, 255, 0.8));
+            transform: scale(1.1);
+        }
+
+        .nav-label {
+            font-size: 10px;
+            white-space: nowrap;
+            transition: all 0.3s ease;
+        }
+
+        /* Page styles */
+        h1 {
+            font-size: 28px;
+            font-weight: 700;
+            margin-bottom: 20px;
+            background: linear-gradient(135deg, #ba55ff, #fff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .card {
+            background: rgba(138, 43, 226, 0.1);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(186, 85, 255, 0.2);
+            border-radius: 16px;
+            padding: 20px;
+            margin-bottom: 16px;
+        }
+
+        .connect-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 50vh;
+            gap: 30px;
+        }
+
+        .connect-btn {
+            position: relative;
+            width: 140px;
+            height: 140px;
+            border-radius: 50%;
+            border: none;
+            background: transparent;
+            cursor: pointer;
+            padding: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .connect-ring {
+            position: absolute;
+            inset: 0;
+            border-radius: 50%;
+            background: conic-gradient(from 0deg, #8a2be2, #ba55ff, #e0a3ff, #8a2be2);
+            animation: rotate 4s linear infinite;
+            filter: blur(8px);
+            opacity: 0.6;
+        }
+
+        .connect-btn:hover .connect-ring {
+            animation: rotate 2s linear infinite;
+            filter: blur(12px);
+            opacity: 0.8;
+        }
+
+        .connect-btn.connected .connect-ring {
+            background: conic-gradient(from 0deg, #00ff88, #00cc6a, #00ff88);
+            animation: pulse-green 2s ease-in-out infinite;
+        }
+
+        @keyframes rotate {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+
+        @keyframes pulse-green {
+            0%, 100% { opacity: 0.6; filter: blur(8px); }
+            50% { opacity: 0.9; filter: blur(15px); }
+        }
+
+        .connect-inner {
+            position: relative;
+            width: 110px;
+            height: 110px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, rgba(26, 10, 46, 0.95) 0%, rgba(45, 27, 78, 0.95) 100%);
+            border: 2px solid rgba(186, 85, 255, 0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 
+                0 0 30px rgba(138, 43, 226, 0.3),
+                inset 0 2px 4px rgba(255, 255, 255, 0.1);
+            transition: all 0.3s ease;
+        }
+
+        .connect-btn.connected .connect-inner {
+            background: linear-gradient(135deg, rgba(0, 200, 100, 0.95) 0%, rgba(0, 150, 75, 0.95) 100%);
+            border-color: rgba(0, 255, 136, 0.6);
+            box-shadow: 
+                0 0 40px rgba(0, 255, 136, 0.5),
+                inset 0 2px 4px rgba(255, 255, 255, 0.2);
+        }
+
+        .connect-icon {
+            width: 40px;
+            height: 40px;
+            color: #ba55ff;
+            transition: all 0.3s ease;
+        }
+
+        .connect-btn.connected .connect-icon {
+            color: #fff;
+            filter: drop-shadow(0 0 8px rgba(255, 255, 255, 0.8));
+        }
+
+        .connect-status {
+            font-size: 14px;
+            color: rgba(255, 255, 255, 0.7);
+            text-align: center;
+            transition: all 0.3s ease;
+        }
+
+        .connect-btn.connected + .connect-status {
+            color: #00ff88;
+            text-shadow: 0 0 10px rgba(0, 255, 136, 0.5);
+        }
+
+        /* Protocol selector */
+        .protocol-selector {
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+            margin-top: 10px;
+        }
+
+        .protocol-label {
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.5);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .protocol-btn {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 20px;
+            background: rgba(138, 43, 226, 0.2);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(186, 85, 255, 0.4);
+            border-radius: 20px;
+            color: #fff;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .protocol-btn:hover {
+            background: rgba(138, 43, 226, 0.35);
+            box-shadow: 0 0 20px rgba(186, 85, 255, 0.3);
+        }
+
+        .protocol-arrow {
+            width: 16px;
+            height: 16px;
+            transition: transform 0.3s ease;
+        }
+
+        .protocol-btn.open .protocol-arrow {
+            transform: rotate(180deg);
+        }
+
+        .protocol-dropdown {
+            position: absolute;
+            top: 100%;
+            left: 50%;
+            transform: translateX(-50%) translateY(-10px);
+            opacity: 0;
+            visibility: hidden;
+            background: rgba(26, 10, 46, 0.95);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(186, 85, 255, 0.3);
+            border-radius: 16px;
+            padding: 8px;
+            min-width: 160px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4);
+            z-index: 100;
+            transition: all 0.3s ease;
+        }
+
+        .protocol-dropdown.open {
+            opacity: 1;
+            visibility: visible;
+            transform: translateX(-50%) translateY(5px);
+        }
+
+        .protocol-option {
+            padding: 12px 16px;
+            border-radius: 12px;
+            font-size: 14px;
+            color: rgba(255, 255, 255, 0.7);
+            cursor: pointer;
+            transition: all 0.2s ease;
+            text-align: center;
+        }
+
+        .protocol-option:hover {
+            background: rgba(138, 43, 226, 0.3);
+            color: #fff;
+        }
+
+        .protocol-option.active {
+            background: rgba(186, 85, 255, 0.4);
+            color: #fff;
+        }
+
+        /* Location card */
+        .location-card {
+            width: 100%;
+            max-width: 280px;
+            background: rgba(138, 43, 226, 0.1);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(186, 85, 255, 0.2);
+            border-radius: 20px;
+            padding: 16px 20px;
+            margin-top: 20px;
+        }
+
+        .location-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 12px;
+        }
+
+        .location-globe {
+            width: 16px;
+            height: 16px;
+            color: rgba(186, 85, 255, 0.8);
+        }
+
+        .location-label {
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.5);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .location-selector {
+            width: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 16px;
+            background: rgba(138, 43, 226, 0.2);
+            border: 1px solid rgba(186, 85, 255, 0.3);
+            border-radius: 16px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .location-selector:hover {
+            background: rgba(138, 43, 226, 0.3);
+            box-shadow: 0 0 20px rgba(186, 85, 255, 0.2);
+        }
+
+        .location-info {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .location-flag {
+            font-size: 24px;
+        }
+
+        .location-details {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 2px;
+        }
+
+        .location-name {
+            font-size: 16px;
+            font-weight: 600;
+            color: #fff;
+        }
+
+        .location-server {
+            font-size: 12px;
+            color: rgba(186, 85, 255, 0.8);
+        }
+
+        .location-arrow {
+            width: 20px;
+            height: 20px;
+            color: rgba(255, 255, 255, 0.6);
+        }
+
+        /* Server selection panel */
+        .server-panel-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.5);
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.3s ease;
+            z-index: 999;
+        }
+
+        .server-panel-overlay.open {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        .server-panel {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: rgba(26, 10, 46, 0.98);
+            backdrop-filter: blur(30px);
+            border-top: 1px solid rgba(186, 85, 255, 0.3);
+            border-radius: 24px 24px 0 0;
+            padding: 16px 20px 100px;
+            transform: translateY(100%);
+            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            z-index: 1001;
+            max-height: 70vh;
+            overflow-y: auto;
+        }
+
+        .server-panel.open {
+            transform: translateY(0);
+        }
+
+        .server-panel-header {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            margin-bottom: 20px;
+            padding-top: 8px;
+        }
+
+        .server-panel-handle {
+            width: 36px;
+            height: 4px;
+            background: rgba(186, 85, 255, 0.4);
+            border-radius: 2px;
+            position: absolute;
+            top: 0;
+        }
+
+        .server-panel-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: #fff;
+        }
+
+        .server-panel-close {
+            position: absolute;
+            right: 0;
+            width: 32px;
+            height: 32px;
+            background: rgba(138, 43, 226, 0.2);
+            border: 1px solid rgba(186, 85, 255, 0.3);
+            border-radius: 10px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #fff;
+            transition: all 0.2s ease;
+        }
+
+        .server-panel-close:hover {
+            background: rgba(138, 43, 226, 0.4);
+        }
+
+        .server-panel-close svg {
+            width: 18px;
+            height: 18px;
+        }
+
+        .server-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .server-item {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            padding: 16px;
+            background: rgba(138, 43, 226, 0.1);
+            border: 1px solid rgba(186, 85, 255, 0.2);
+            border-radius: 16px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .server-item:hover {
+            background: rgba(138, 43, 226, 0.25);
+            border-color: rgba(186, 85, 255, 0.4);
+        }
+
+        .server-item.active {
+            background: rgba(186, 85, 255, 0.25);
+            border-color: rgba(186, 85, 255, 0.6);
+            box-shadow: 0 0 20px rgba(186, 85, 255, 0.2);
+        }
+
+        .server-flag {
+            font-size: 28px;
+        }
+
+        .server-info {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            flex: 1;
+        }
+
+        .server-name {
+            font-size: 16px;
+            font-weight: 600;
+            color: #fff;
+        }
+
+        .server-id {
+            font-size: 12px;
+            color: rgba(186, 85, 255, 0.8);
+        }
+
+        .server-status {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            gap: 6px;
+        }
+
+        .server-ping {
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.6);
+        }
+
+        .server-signal {
+            width: 24px;
+            height: 4px;
+            border-radius: 2px;
+            background: rgba(255, 255, 255, 0.2);
+            position: relative;
+        }
+
+        .server-signal::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 0;
+            height: 100%;
+            border-radius: 2px;
+        }
+
+        .server-signal.strong::before {
+            width: 100%;
+            background: #00ff88;
+            box-shadow: 0 0 8px rgba(0, 255, 136, 0.6);
+        }
+
+        .server-signal.medium::before {
+            width: 66%;
+            background: #ffcc00;
+            box-shadow: 0 0 8px rgba(255, 204, 0, 0.6);
+        }
+
+        .server-signal.weak::before {
+            width: 33%;
+            background: #ff5555;
+            box-shadow: 0 0 8px rgba(255, 85, 85, 0.6);
+        }
+
+        /* Pricing plans */
+        .plans-container {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .plan-card {
+            background: rgba(138, 43, 226, 0.1);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(186, 85, 255, 0.2);
+            border-radius: 20px;
+            padding: 24px;
+            position: relative;
+            transition: all 0.3s ease;
+        }
+
+        .plan-card:hover {
+            border-color: rgba(186, 85, 255, 0.4);
+            transform: translateY(-2px);
+        }
+
+        .plan-card.featured {
+            background: linear-gradient(135deg, rgba(186, 85, 255, 0.2) 0%, rgba(138, 43, 226, 0.2) 100%);
+            border-color: rgba(186, 85, 255, 0.5);
+            box-shadow: 0 0 30px rgba(186, 85, 255, 0.2);
+        }
+
+        .plan-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 16px;
+        }
+
+        .plan-name {
+            font-size: 20px;
+            font-weight: 700;
+            color: #fff;
+        }
+
+        .plan-badge {
+            font-size: 11px;
+            font-weight: 600;
+            padding: 6px 12px;
+            background: rgba(186, 85, 255, 0.3);
+            border-radius: 12px;
+            color: #fff;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .plan-badge.hot {
+            background: linear-gradient(135deg, #ff6b6b, #ff8e53);
+        }
+
+        .plan-badge.save {
+            background: linear-gradient(135deg, #00c853, #00e676);
+        }
+
+        .plan-price {
+            display: flex;
+            align-items: baseline;
+            gap: 4px;
+            margin-bottom: 20px;
+        }
+
+        .plan-amount {
+            font-size: 36px;
+            font-weight: 800;
+            background: linear-gradient(135deg, #ba55ff, #fff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .plan-period {
+            font-size: 16px;
+            color: rgba(255, 255, 255, 0.5);
+        }
+
+        .plan-features {
+            list-style: none;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-bottom: 24px;
+        }
+
+        .plan-features li {
+            font-size: 14px;
+            color: rgba(255, 255, 255, 0.8);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .plan-features li::before {
+            content: '✓';
+            color: #ba55ff;
+            font-weight: 700;
+        }
+
+        .plan-btn {
+            width: 100%;
+            padding: 14px 24px;
+            background: rgba(138, 43, 226, 0.3);
+            border: 1px solid rgba(186, 85, 255, 0.4);
+            border-radius: 14px;
+            color: #fff;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .plan-btn:hover {
+            background: rgba(186, 85, 255, 0.4);
+            box-shadow: 0 0 20px rgba(186, 85, 255, 0.3);
+        }
+
+        .plan-btn.primary {
+            background: linear-gradient(135deg, #ba55ff, #8a2be2);
+            border: none;
+            box-shadow: 0 4px 20px rgba(186, 85, 255, 0.4);
+        }
+
+        .plan-btn.primary:hover {
+            box-shadow: 0 6px 30px rgba(186, 85, 255, 0.6);
+            transform: translateY(-2px);
+        }
+
+        /* Bonuses page */
+        .bonus-balance-card {
+            background: linear-gradient(135deg, rgba(186, 85, 255, 0.25) 0%, rgba(138, 43, 226, 0.25) 100%);
+            border: 1px solid rgba(186, 85, 255, 0.4);
+            border-radius: 24px;
+            padding: 28px;
+            text-align: center;
+            margin-bottom: 20px;
+            box-shadow: 0 0 40px rgba(186, 85, 255, 0.15);
+        }
+
+        .bonus-balance-header {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            margin-bottom: 16px;
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .bonus-icon {
+            width: 20px;
+            height: 20px;
+            color: #ba55ff;
+        }
+
+        .bonus-amount {
+            font-size: 48px;
+            font-weight: 800;
+            background: linear-gradient(135deg, #ba55ff, #fff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 8px;
+        }
+
+        .bonus-hint {
+            font-size: 13px;
+            color: rgba(255, 255, 255, 0.5);
+        }
+
+        .bonus-actions {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-bottom: 24px;
+        }
+
+        .bonus-action-btn {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+            padding: 20px 16px;
+            background: rgba(138, 43, 226, 0.15);
+            border: 1px solid rgba(186, 85, 255, 0.25);
+            border-radius: 20px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .bonus-action-btn:hover {
+            background: rgba(138, 43, 226, 0.3);
+            border-color: rgba(186, 85, 255, 0.5);
+            transform: translateY(-2px);
+        }
+
+        .bonus-action-icon {
+            font-size: 32px;
+        }
+
+        .bonus-action-text {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .bonus-action-title {
+            font-size: 13px;
+            font-weight: 600;
+            color: #fff;
+        }
+
+        .bonus-action-reward {
+            font-size: 12px;
+            color: #ba55ff;
+            font-weight: 600;
+        }
+
+        .bonus-section-title {
+            font-size: 18px;
+            font-weight: 700;
+            color: #fff;
+            margin-bottom: 16px;
+        }
+
+        .reward-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 16px 20px;
+            background: rgba(138, 43, 226, 0.1);
+            border: 1px solid rgba(186, 85, 255, 0.2);
+            border-radius: 16px;
+            margin-bottom: 12px;
+        }
+
+        .reward-info {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .reward-name {
+            font-size: 14px;
+            font-weight: 600;
+            color: #fff;
+        }
+
+        .reward-cost {
+            font-size: 12px;
+            color: #ba55ff;
+            font-weight: 500;
+        }
+
+        .reward-btn {
+            padding: 10px 20px;
+            background: rgba(186, 85, 255, 0.3);
+            border: 1px solid rgba(186, 85, 255, 0.5);
+            border-radius: 12px;
+            color: #fff;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .reward-btn:hover:not(:disabled) {
+            background: rgba(186, 85, 255, 0.5);
+            box-shadow: 0 0 15px rgba(186, 85, 255, 0.3);
+        }
+
+        .reward-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        /* Instructions page */
+        .instruction-tabs {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 20px;
+            overflow-x: auto;
+            padding-bottom: 4px;
+        }
+
+        .instruction-tab {
+            flex: 1;
+            min-width: 70px;
+            padding: 12px 16px;
+            background: rgba(138, 43, 226, 0.2);
+            border: 1px solid rgba(186, 85, 255, 0.3);
+            border-radius: 12px;
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            white-space: nowrap;
+        }
+
+        .instruction-tab:hover {
+            background: rgba(138, 43, 226, 0.35);
+            border-color: rgba(186, 85, 255, 0.5);
+        }
+
+        .instruction-tab.active {
+            background: linear-gradient(135deg, #ba55ff, #8a2be2);
+            border-color: transparent;
+            color: #fff;
+            box-shadow: 0 4px 15px rgba(186, 85, 255, 0.4);
+        }
+
+        .instruction-panel {
+            display: none;
+            animation: fadeIn 0.3s ease;
+        }
+
+        .instruction-panel.active {
+            display: block;
+        }
+
+        .instruction-step {
+            display: flex;
+            gap: 16px;
+            padding: 20px;
+            background: rgba(138, 43, 226, 0.1);
+            border: 1px solid rgba(186, 85, 255, 0.2);
+            border-radius: 16px;
+            margin-bottom: 12px;
+        }
+
+        .step-number {
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(135deg, #ba55ff, #8a2be2);
+            border-radius: 50%;
+            font-size: 14px;
+            font-weight: 700;
+            color: #fff;
+            flex-shrink: 0;
+        }
+
+        .step-content h4 {
+            font-size: 15px;
+            font-weight: 600;
+            color: #fff;
+            margin-bottom: 6px;
+        }
+
+        .step-content p {
+            font-size: 14px;
+            color: rgba(255, 255, 255, 0.7);
+            line-height: 1.5;
+        }
+
+        .step-content strong {
+            color: #ba55ff;
+        }
+
+        .config-btn {
+            margin-top: 12px;
+            padding: 12px 24px;
+            background: linear-gradient(135deg, #ba55ff, #8a2be2);
+            border: none;
+            border-radius: 12px;
+            color: #fff;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(186, 85, 255, 0.3);
+        }
+
+        .config-btn:hover {
+            box-shadow: 0 6px 25px rgba(186, 85, 255, 0.5);
+            transform: translateY(-2px);
+        }
+
+        /* Profile page */
+        .profile-header {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+
+        .profile-avatar {
+            width: 64px;
+            height: 64px;
+            background: linear-gradient(135deg, rgba(186, 85, 255, 0.3), rgba(138, 43, 226, 0.3));
+            border: 2px solid rgba(186, 85, 255, 0.4);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 28px;
+        }
+
+        .profile-info {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .profile-name {
+            font-size: 20px;
+            font-weight: 700;
+            color: #fff;
+        }
+
+        .profile-id {
+            font-size: 13px;
+            color: rgba(255, 255, 255, 0.5);
+        }
+
+        .profile-status {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-bottom: 24px;
+        }
+
+        .status-item {
+            background: rgba(138, 43, 226, 0.1);
+            border: 1px solid rgba(186, 85, 255, 0.2);
+            border-radius: 16px;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .status-label {
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.5);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .status-value {
+            font-size: 16px;
+            font-weight: 600;
+            color: #fff;
+        }
+
+        .status-value.premium {
+            color: #ba55ff;
+            text-shadow: 0 0 10px rgba(186, 85, 255, 0.5);
+        }
+
+        .profile-section {
+            margin-bottom: 24px;
+        }
+
+        .profile-section-title {
+            font-size: 16px;
+            font-weight: 700;
+            color: #fff;
+            margin-bottom: 16px;
+        }
+
+        .setting-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 16px;
+            background: rgba(138, 43, 226, 0.1);
+            border: 1px solid rgba(186, 85, 255, 0.2);
+            border-radius: 16px;
+            margin-bottom: 12px;
+        }
+
+        .setting-info {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .setting-name {
+            font-size: 15px;
+            font-weight: 600;
+            color: #fff;
+        }
+
+        .setting-desc {
+            font-size: 13px;
+            color: rgba(255, 255, 255, 0.5);
+        }
+
+        /* Toggle switch */
+        .toggle {
+            position: relative;
+            width: 52px;
+            height: 28px;
+            cursor: pointer;
+        }
+
+        .toggle input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .toggle-slider {
+            position: absolute;
+            inset: 0;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 28px;
+            transition: all 0.3s ease;
+        }
+
+        .toggle-slider::before {
+            content: '';
+            position: absolute;
+            width: 22px;
+            height: 22px;
+            left: 3px;
+            top: 3px;
+            background: #fff;
+            border-radius: 50%;
+            transition: all 0.3s ease;
+        }
+
+        .toggle input:checked + .toggle-slider {
+            background: linear-gradient(135deg, #ba55ff, #8a2be2);
+        }
+
+        .toggle input:checked + .toggle-slider::before {
+            transform: translateX(24px);
+        }
+
+        .toggle input:disabled + .toggle-slider {
+            opacity: 0.5;
+        }
+
+        .profile-btn {
+            width: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 16px 20px;
+            background: rgba(138, 43, 226, 0.1);
+            border: 1px solid rgba(186, 85, 255, 0.2);
+            border-radius: 16px;
+            color: #fff;
+            font-size: 15px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-bottom: 12px;
+        }
+
+        .profile-btn:hover {
+            background: rgba(138, 43, 226, 0.25);
+            border-color: rgba(186, 85, 255, 0.4);
+        }
+
+        .profile-btn svg {
+            width: 18px;
+            height: 18px;
+            color: rgba(255, 255, 255, 0.5);
+        }
+
+        .logout-btn {
+            width: 100%;
+            padding: 16px;
+            background: rgba(255, 85, 85, 0.15);
+            border: 1px solid rgba(255, 85, 85, 0.3);
+            border-radius: 16px;
+            color: #ff6b6b;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-top: 12px;
+        }
+
+        .logout-btn:hover {
+            background: rgba(255, 85, 85, 0.25);
+        }
+
+        /* Clash-style connect button */
+        .clash-wrapper {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 60vh;
+            gap: 24px;
+        }
+
+        .clash-btn {
+            position: relative;
+            width: 180px;
+            height: 180px;
+            border-radius: 50%;
+            border: none;
+            background: transparent;
+            cursor: pointer;
+            padding: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .clash-ring {
+            position: absolute;
+            inset: 0;
+            border-radius: 50%;
+            background: conic-gradient(from 0deg, #8a2be2, #ba55ff, #e0a3ff, #8a2be2);
+            animation: rotate 3s linear infinite;
+            filter: blur(15px);
+            opacity: 0.7;
+        }
+
+        .clash-btn:hover .clash-ring {
+            animation: rotate 1.5s linear infinite;
+            filter: blur(20px);
+            opacity: 0.9;
+        }
+
+        .clash-btn.connected .clash-ring {
+            background: conic-gradient(from 0deg, #00ff88, #00cc6a, #00ff88);
+            animation: pulse-green 2s ease-in-out infinite;
+        }
+
+        @keyframes rotate {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+
+        @keyframes pulse-green {
+            0%, 100% { opacity: 0.6; filter: blur(12px); }
+            50% { opacity: 0.95; filter: blur(22px); }
+        }
+
+        .clash-inner {
+            position: relative;
+            width: 140px;
+            height: 140px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, rgba(26, 10, 46, 0.95) 0%, rgba(45, 27, 78, 0.95) 100%);
+            border: 2px solid rgba(186, 85, 255, 0.6);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 0 50px rgba(138, 43, 226, 0.5), inset 0 2px 4px rgba(255, 255, 255, 0.1);
+            transition: all 0.3s ease;
+        }
+
+        .clash-btn.connected .clash-inner {
+            background: linear-gradient(135deg, rgba(0, 200, 100, 0.95) 0%, rgba(0, 150, 75, 0.95) 100%);
+            border-color: rgba(0, 255, 136, 0.8);
+            box-shadow: 0 0 60px rgba(0, 255, 136, 0.7), inset 0 2px 4px rgba(255, 255, 255, 0.2);
+        }
+
+        .clash-icon {
+            width: 50px;
+            height: 50px;
+            color: #ba55ff;
+            transition: all 0.3s ease;
+        }
+
+        .clash-btn.connected .clash-icon {
+            color: #fff;
+            filter: drop-shadow(0 0 12px rgba(255, 255, 255, 0.9));
+        }
+
+        .clash-status {
+            font-size: 16px;
+            color: rgba(255, 255, 255, 0.7);
+            text-align: center;
+            transition: all 0.3s ease;
+        }
+
+        .clash-btn.connected + .clash-status {
+            color: #00ff88;
+            text-shadow: 0 0 15px rgba(0, 255, 136, 0.5);
+        }
+
+        .get-config-btn {
+            margin-top: 20px;
+            padding: 14px 28px;
+            background: rgba(138, 43, 226, 0.3);
+            border: 1px solid rgba(186, 85, 255, 0.5);
+            border-radius: 14px;
+            color: #fff;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .get-config-btn:hover {
+            background: rgba(186, 85, 255, 0.4);
+            box-shadow: 0 0 20px rgba(186, 85, 255, 0.3);
+        }
+
+        /* Subscription cards horizontal scroll */
+        .subscription-scroll {
+            display: flex;
+            gap: 16px;
+            overflow-x: auto;
+            scroll-snap-type: x mandatory;
+            padding: 20px;
+            margin: 0 -20px;
+            scrollbar-width: none;
+            -ms-overflow-style: none;
+        }
+
+        .subscription-scroll::-webkit-scrollbar {
+            display: none;
+        }
+
+        .sub-card {
+            flex: 0 0 75%;
+            scroll-snap-align: center;
+            background: rgba(138, 43, 226, 0.15);
+            border: 2px solid rgba(186, 85, 255, 0.25);
+            border-radius: 24px;
+            padding: 28px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .sub-card.selected {
+            border-color: #ba55ff;
+            box-shadow: 0 0 30px rgba(186, 85, 255, 0.4);
+        }
+
+        .sub-card.featured {
+            background: linear-gradient(135deg, rgba(186, 85, 255, 0.25) 0%, rgba(138, 43, 226, 0.25) 100%);
+            border-color: rgba(186, 85, 255, 0.5);
+            box-shadow: 0 0 30px rgba(186, 85, 255, 0.15);
+        }
+
+        .sub-name {
+            font-size: 22px;
+            font-weight: 700;
+            color: #fff;
+        }
+
+        .sub-desc {
+            font-size: 14px;
+            color: rgba(255, 255, 255, 0.7);
+            line-height: 1.5;
+            flex: 1;
+        }
+
+        .sub-price {
+            font-size: 32px;
+            font-weight: 800;
+            background: linear-gradient(135deg, #ba55ff, #fff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .sub-price span {
+            font-size: 14px;
+            font-weight: 500;
+            color: rgba(255, 255, 255, 0.5);
+            -webkit-text-fill-color: rgba(255, 255, 255, 0.5);
+        }
+
+        /* Fixed subscribe button */
+        .sub-bottom-btn {
+            position: fixed;
+            bottom: 100px;
+            left: 20px;
+            right: 20px;
+            z-index: 100;
+        }
+
+        .subscribe-btn {
+            width: 100%;
+            padding: 18px 24px;
+            background: linear-gradient(135deg, #ba55ff, #8a2be2);
+            border: none;
+            border-radius: 16px;
+            color: #fff;
+            font-size: 16px;
+            font-weight: 700;
+            cursor: pointer;
+            box-shadow: 0 4px 20px rgba(186, 85, 255, 0.4);
+            transition: all 0.3s ease;
+        }
+
+        .subscribe-btn:hover {
+            box-shadow: 0 6px 30px rgba(186, 85, 255, 0.6);
+            transform: translateY(-2px);
+        }
+
+        .subscribe-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        /* Bonuses section */
+        .bonus-balance {
+            background: linear-gradient(135deg, rgba(186, 85, 255, 0.25) 0%, rgba(138, 43, 226, 0.25) 100%);
+            border: 1px solid rgba(186, 85, 255, 0.4);
+            border-radius: 24px;
+            padding: 32px;
+            text-align: center;
+            margin-bottom: 24px;
+        }
+
+        .bonus-icon-large {
+            font-size: 48px;
+            margin-bottom: 12px;
+        }
+
+        .bonus-total {
+            font-size: 42px;
+            font-weight: 800;
+            background: linear-gradient(135deg, #ba55ff, #fff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 4px;
+        }
+
+        .bonus-label {
+            font-size: 14px;
+            color: rgba(255, 255, 255, 0.6);
+        }
+
+        .section-title {
+            font-size: 18px;
+            font-weight: 700;
+            color: #fff;
+            margin-bottom: 16px;
+        }
+
+        .bonus-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .bonus-item {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            padding: 18px;
+            background: rgba(138, 43, 226, 0.1);
+            border: 1px solid rgba(186, 85, 255, 0.2);
+            border-radius: 16px;
+        }
+
+        .bonus-item-icon {
+            font-size: 28px;
+        }
+
+        .bonus-item-info {
+            flex: 1;
+        }
+
+        .bonus-item-title {
+            font-size: 15px;
+            font-weight: 600;
+            color: #fff;
+            margin-bottom: 4px;
+        }
+
+        .bonus-item-desc {
+            font-size: 13px;
+            color: rgba(255, 255, 255, 0.5);
+        }
+
+        .bonus-item-amount {
+            font-size: 18px;
+            font-weight: 700;
+            color: #ba55ff;
+        }
+    </style>
+</head>
+<body>
+    <div class="content">
+        <!-- Главная -->
+        <div id="tab-home" class="tab-content active">
+            <div class="clash-wrapper">
+                <button class="clash-btn" id="clashBtn">
+                    <div class="clash-ring"></div>
+                    <div class="clash-inner">
+                        <svg class="clash-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"></path>
+                        </svg>
+                    </div>
+                </button>
+                <p class="clash-status" id="clashStatus">Нажмите для подключения</p>
+                <button class="get-config-btn" id="getConfigBtn">Получить конфигурацию</button>
+            </div>
+        </div>
+
+        <!-- Подписка -->
+        <div id="tab-subscription" class="tab-content">
+        </div>
+
+        <!-- Бонусы -->
+        <div id="tab-bonuses" class="tab-content">
+        </div>
+
+        <!-- Инструкция -->
+        <div id="tab-instruction" class="tab-content">
+            <h1>Инструкция</h1>
+            <div class="instruction-tabs">
+                <button class="instruction-tab active" data-platform="ios">iOS</button>
+                <button class="instruction-tab" data-platform="android">Android</button>
+                <button class="instruction-tab" data-platform="windows">Windows</button>
+                <button class="instruction-tab" data-platform="mac">Mac</button>
+            </div>
+            <div class="instruction-content">
+                <div class="instruction-panel active" id="ios">
+                    <div class="instruction-step">
+                        <span class="step-number">1</span>
+                        <div class="step-content">
+                            <h4>Скачайте приложение</h4>
+                            <p>Установите <strong>WireGuard</strong> из App Store</p>
+                        </div>
+                    </div>
+                    <div class="instruction-step">
+                        <span class="step-number">2</span>
+                        <div class="step-content">
+                            <h4>Получите конфигурацию</h4>
+                            <p>Нажмите кнопку ниже для получения файла конфигурации</p>
+                            <button class="config-btn">Получить конфигурацию</button>
+                        </div>
+                    </div>
+                    <div class="instruction-step">
+                        <span class="step-number">3</span>
+                        <div class="step-content">
+                            <h4>Импортируйте конфиг</h4>
+                            <p>Откройте файл в WireGuard или отсканируйте QR-код</p>
+                        </div>
+                    </div>
+                    <div class="instruction-step">
+                        <span class="step-number">4</span>
+                        <div class="step-content">
+                            <h4>Подключитесь</h4>
+                            <p>Нажмите переключатель для активации VPN</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="instruction-panel" id="android">
+                    <div class="instruction-step">
+                        <span class="step-number">1</span>
+                        <div class="step-content">
+                            <h4>Скачайте приложение</h4>
+                            <p>Установите <strong>WireGuard</strong> из Google Play</p>
+                        </div>
+                    </div>
+                    <div class="instruction-step">
+                        <span class="step-number">2</span>
+                        <div class="step-content">
+                            <h4>Получите конфигурацию</h4>
+                            <p>Нажмите кнопку ниже для получения файла конфигурации</p>
+                            <button class="config-btn">Получить конфигурацию</button>
+                        </div>
+                    </div>
+                    <div class="instruction-step">
+                        <span class="step-number">3</span>
+                        <div class="step-content">
+                            <h4>Импортируйте конфиг</h4>
+                            <p>Нажмите "+" в приложении и выберите "Создать из файла или архива"</p>
+                        </div>
+                    </div>
+                    <div class="instruction-step">
+                        <span class="step-number">4</span>
+                        <div class="step-content">
+                            <h4>Подключитесь</h4>
+                            <p>Нажмите переключатель для активации VPN</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="instruction-panel" id="windows">
+                    <div class="instruction-step">
+                        <span class="step-number">1</span>
+                        <div class="step-content">
+                            <h4>Скачайте приложение</h4>
+                            <p>Скачайте <strong>WireGuard</strong> с официального сайта wireguard.com</p>
+                        </div>
+                    </div>
+                    <div class="instruction-step">
+                        <span class="step-number">2</span>
+                        <div class="step-content">
+                            <h4>Получите конфигурацию</h4>
+                            <p>Нажмите кнопку ниже для получения файла конфигурации</p>
+                            <button class="config-btn">Получить конфигурацию</button>
+                        </div>
+                    </div>
+                    <div class="instruction-step">
+                        <span class="step-number">3</span>
+                        <div class="step-content">
+                            <h4>Импортируйте туннель</h4>
+                            <p>Нажмите "Добавить туннель" → "Импорт туннелей из файла"</p>
+                        </div>
+                    </div>
+                    <div class="instruction-step">
+                        <span class="step-number">4</span>
+                        <div class="step-content">
+                            <h4>Подключитесь</h4>
+                            <p>Нажмите "Активировать" для включения VPN</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="instruction-panel" id="mac">
+                    <div class="instruction-step">
+                        <span class="step-number">1</span>
+                        <div class="step-content">
+                            <h4>Скачайте приложение</h4>
+                            <p>Установите <strong>WireGuard</strong> из Mac App Store</p>
+                        </div>
+                    </div>
+                    <div class="instruction-step">
+                        <span class="step-number">2</span>
+                        <div class="step-content">
+                            <h4>Получите конфигурацию</h4>
+                            <p>Нажмите кнопку ниже для получения файла конфигурации</p>
+                            <button class="config-btn">Получить конфигурацию</button>
+                        </div>
+                    </div>
+                    <div class="instruction-step">
+                        <span class="step-number">3</span>
+                        <div class="step-content">
+                            <h4>Импортируйте конфиг</h4>
+                            <p>Нажмите "Импорт туннелей из файла" в меню приложения</p>
+                        </div>
+                    </div>
+                    <div class="instruction-step">
+                        <span class="step-number">4</span>
+                        <div class="step-content">
+                            <h4>Подключитесь</h4>
+                            <p>Нажмите "Активировать" для включения VPN</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Профиль -->
+        <div id="tab-profile" class="tab-content">
+            <h1>Профиль</h1>
+            <div class="profile-header">
+                <div class="profile-avatar">👤</div>
+                <div class="profile-info">
+                    <span class="profile-name">@username</span>
+                    <span class="profile-id">ID: 12345678</span>
+                </div>
+            </div>
+            <div class="profile-status">
+                <div class="status-item">
+                    <span class="status-label">Тариф</span>
+                    <span class="status-value premium">Премиум</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-label">До окончания</span>
+                    <span class="status-value">27 дней</span>
+                </div>
+            </div>
+            <div class="profile-section">
+                <h3 class="profile-section-title">Настройки</h3>
+                <div class="setting-item">
+                    <div class="setting-info">
+                        <span class="setting-name">Автоподключение</span>
+                        <span class="setting-desc">Подключаться при запуске</span>
+                    </div>
+                    <label class="toggle">
+                        <input type="checkbox" id="autoConnect">
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+                <div class="setting-item">
+                    <div class="setting-info">
+                        <span class="setting-name">Уведомления</span>
+                        <span class="setting-desc">Push-уведомления</span>
+                    </div>
+                    <label class="toggle">
+                        <input type="checkbox" id="notifications" checked>
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+                <div class="setting-item">
+                    <div class="setting-info">
+                        <span class="setting-name">Тема</span>
+                        <span class="setting-desc">Темная тема</span>
+                    </div>
+                    <label class="toggle">
+                        <input type="checkbox" id="darkTheme" checked disabled>
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+            </div>
+            <div class="profile-section">
+                <h3 class="profile-section-title">Поддержка</h3>
+                <button class="profile-btn">
+                    <span>💬 Чат поддержки</span>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="9 18 15 12 9 6"></polyline>
+                    </svg>
+                </button>
+                <button class="profile-btn">
+                    <span>❓ FAQ</span>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="9 18 15 12 9 6"></polyline>
+                    </svg>
+                </button>
+            </div>
+            <button class="logout-btn">Выйти</button>
+        </div>
+    </div>
+
+    <!-- Floating Navigation Island -->
+    <nav class="nav-island" id="navIsland">
+        <button class="nav-item active" data-tab="tab-home">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+                <polyline points="9 22 9 12 15 12 15 22"></polyline>
+            </svg>
+            <span class="nav-label">Главная</span>
+        </button>
+        <button class="nav-item" data-tab="tab-subscription">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="1" y="4" width="22" height="16" rx="2" ry="2"></rect>
+                <line x1="1" y1="10" x2="23" y2="10"></line>
+            </svg>
+            <span class="nav-label">Подписка</span>
+        </button>
+        <button class="nav-item" data-tab="tab-bonuses">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+            </svg>
+            <span class="nav-label">Бонусы</span>
+        </button>
+        <button class="nav-item" data-tab="tab-instruction">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"></circle>
+                <line x1="12" y1="16" x2="12" y2="12"></line>
+                <line x1="12" y1="8" x2="12.01" y2="8"></line>
+            </svg>
+            <span class="nav-label">Инструкция</span>
+        </button>
+        <button class="nav-item" data-tab="tab-profile">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                <circle cx="12" cy="7" r="4"></circle>
+            </svg>
+            <span class="nav-label">Профиль</span>
+        </button>
+    </nav>
+
+    <script>
+        // Initialize Telegram WebApp
+        Telegram.WebApp.ready();
+        Telegram.WebApp.expand();
+
+        // Theme colors
+        Telegram.WebApp.setHeaderColor('#1a0a2e');
+        Telegram.WebApp.setBackgroundColor('#1a0a2e');
+
+        // Navigation logic
+        const navItems = document.querySelectorAll('.nav-item');
+        const tabContents = document.querySelectorAll('.tab-content');
+
+        navItems.forEach(item => {
+            item.addEventListener('click', () => {
+                const targetTab = item.dataset.tab;
+
+                // Update nav items
+                navItems.forEach(nav => nav.classList.remove('active'));
+                item.classList.add('active');
+
+                // Update tab content
+                tabContents.forEach(tab => tab.classList.remove('active'));
+                document.getElementById(targetTab).classList.add('active');
+            });
+        });
+
+        // Connect button logic
+        const clashBtn = document.getElementById('clashBtn');
+        const clashStatus = document.getElementById('clashStatus');
+        let isConnected = false;
+
+        clashBtn.addEventListener('click', () => {
+            isConnected = !isConnected;
+            clashBtn.classList.toggle('connected', isConnected);
+            clashStatus.textContent = isConnected ? 'Подключено' : 'Нажмите для подключения';
+        });
+
+        // Instruction tabs logic
+        const instructionTabs = document.querySelectorAll('.instruction-tab');
+        const instructionPanels = document.querySelectorAll('.instruction-panel');
+
+        instructionTabs.forEach(tab => {
+            tab.addEventListener('click', () => {
+                const targetPlatform = tab.dataset.platform;
+
+                instructionTabs.forEach(t => t.classList.remove('active'));
+                tab.classList.add('active');
+
+                instructionPanels.forEach(panel => panel.classList.remove('active'));
+                document.getElementById(targetPlatform).classList.add('active');
+            });
+        });
+
+        // Get config button logic
+        const getConfigBtn = document.getElementById('getConfigBtn');
+
+        getConfigBtn.addEventListener('click', () => {
+            Telegram.WebApp.showPopup({
+                title: 'Конфигурация',
+                message: 'Запросить конфигурацию WireGuard?',
+                buttons: [
+                    { id: 'get', type: 'default', text: 'Получить' },
+                    { id: 'cancel', type: 'cancel', text: 'Отмена' }
+                ]
+            }, (buttonId) => {
+                if (buttonId === 'get') {
+                    Telegram.WebApp.showAlert('Конфигурация отправлена в чат с ботом');
+                }
+            });
+        });
+    </script>
+</body>
+</html>
