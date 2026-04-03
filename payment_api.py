@@ -157,7 +157,7 @@ def create_paycore_payment(amount: float, description: str, user_id: int, userna
         response_data = response.json()
         print(f"[PayCore] Parsed response: {response_data}")
         
-        if response.status_code == 200 and response_data.get("success"):
+        if response.status_code == 200 and response_data.get("url"):
             print(f"[PayCore] Payment created successfully, order_id: {order_id}")
             # Сохраняем платёж в БД
             db = SessionLocal()
@@ -179,13 +179,13 @@ def create_paycore_payment(amount: float, description: str, user_id: int, userna
                 return {
                     "success": True,
                     "order_id": order_id,
-                    "payment_url": response_data.get("paymentUrl"),
+                    "payment_url": response_data.get("url"),
                     "message": "Payment created"
                 }
             finally:
                 db.close()
         else:
-            error_msg = response_data.get("message", "Unknown error")
+            error_msg = response_data.get("message", response_data.get("error", "Unknown error"))
             print(f"[PayCore] Error creating payment: {error_msg}, status: {response.status_code}")
             return {
                 "success": False,
