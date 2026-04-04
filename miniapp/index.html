@@ -1804,10 +1804,42 @@
                         <span class="debug-value" id="debugError">-</span>
                     </div>
                     <pre class="debug-response" id="debugResponse">Response: -</pre>
-                    <button class="debug-toggle-btn" onclick="loadSubscription()" style="margin-top: 10px; background: linear-gradient(135deg, #ba55ff, #8a2be2);">🔄 Проверить подписку</button>
+                    <button class="debug-toggle-btn" onclick="testSubscription()" style="margin-top: 10px; background: linear-gradient(135deg, #ba55ff, #8a2be2);">🔄 Проверить подписку</button>
                 </div>
             </div>
             <button class="debug-toggle-btn" onclick="toggleDebug()" id="debugToggleBtn">🔧 Отладка</button>
+            <script>
+                function testSubscription() {
+                    const user = Telegram.WebApp.initDataUnsafe?.user;
+                    console.log('Test subscription clicked, user:', user);
+                    if (!user) {
+                        document.getElementById('debugUserId').textContent = 'NO USER';
+                        document.getElementById('debugStatus').textContent = 'error';
+                        document.getElementById('debugError').textContent = 'Telegram user not found';
+                        return;
+                    }
+                    document.getElementById('debugUserId').textContent = user.id;
+                    document.getElementById('debugStatus').textContent = 'fetching...';
+                    
+                    const url = 'https://ezh-dev.ru:2500/subscription/' + user.id;
+                    document.getElementById('debugApiUrl').textContent = url;
+                    
+                    fetch(url)
+                        .then(r => {
+                            document.getElementById('debugStatus').textContent = r.status;
+                            return r.json();
+                        })
+                        .then(data => {
+                            document.getElementById('debugResponse').textContent = JSON.stringify(data, null, 2);
+                            document.getElementById('debugError').textContent = '-';
+                        })
+                        .catch(e => {
+                            document.getElementById('debugStatus').textContent = 'error';
+                            document.getElementById('debugError').textContent = e.message;
+                            document.getElementById('debugResponse').textContent = e.toString();
+                        });
+                }
+            </script>
         </div>
 
         <!-- Бонусы -->
