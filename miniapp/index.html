@@ -1683,23 +1683,29 @@
         }
 
         .sub-copy-btn {
-            padding: 6px 10px;
-            background: rgba(186, 85, 255, 0.2);
-            border: 1px solid rgba(186, 85, 255, 0.4);
+            width: 28px;
+            height: 28px;
+            padding: 0;
+            background: rgba(186, 85, 255, 0.15);
+            border: 1px solid rgba(186, 85, 255, 0.3);
             border-radius: 6px;
             color: #fff;
-            font-size: 11px;
-            font-weight: 500;
+            font-size: 14px;
             cursor: pointer;
             transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
         }
 
         .sub-copy-btn:hover {
-            background: rgba(186, 85, 255, 0.35);
+            background: rgba(186, 85, 255, 0.3);
+            border-color: rgba(186, 85, 255, 0.5);
         }
 
         .sub-copy-btn:active {
-            transform: scale(0.95);
+            transform: scale(0.9);
         }
 
         .subscription-message {
@@ -1824,11 +1830,12 @@
                         <span class="sub-label">Ссылка для подключения:</span>
                         <div class="sub-link-box">
                             <span class="sub-link-text" id="sub-link">-</span>
-                            <button class="sub-copy-btn" onclick="copySubLink()">Копировать</button>
+                            <button class="sub-copy-btn" onclick="copySubLink()" title="Копировать">📋</button>
                         </div>
                     </div>
                     <div class="subscription-actions">
                         <button class="sub-action-btn primary" onclick="renewSubscription()">Продлить подписку</button>
+                        <button class="sub-action-btn" onclick="showInstructions()">📖 Инструкции и приложения</button>
                     </div>
                 </div>
             </div>
@@ -2318,6 +2325,14 @@
             // Show nav island and hide Telegram BackButton
             document.getElementById('navIsland').style.display = 'flex';
             Telegram.WebApp.BackButton.hide();
+        }
+
+        function showInstructions() {
+            document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
+            document.getElementById('tab-instruction').classList.add('active');
+            // Update nav items
+            document.querySelectorAll('.nav-item').forEach(nav => nav.classList.remove('active'));
+            document.querySelector('.nav-item[data-tab="tab-instruction"]').classList.add('active');
         }
 
         // Subscription API functions
