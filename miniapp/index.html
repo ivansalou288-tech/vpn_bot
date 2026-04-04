@@ -2387,7 +2387,6 @@
 
             // Hide email, only show subscription ID
             const subId = sub.sub_id || sub.id?.substring(0, 8) || 'N/A';
-            document.getElementById('sub-email').textContent = '#' + subId;
             document.getElementById('sub-status').textContent = sub.enabled ? '✅ Активна' : '❌ Отключена';
             
             // Format date as dd.mm.yyyy (Moscow time - UTC+3)
