@@ -1672,37 +1672,34 @@
         .sub-link-text {
             flex: 1;
             font-family: monospace;
-            font-size: 12px;
+            font-size: 11px;
             color: #ba55ff;
             background: rgba(0, 0, 0, 0.3);
-            padding: 12px 14px;
-            border-radius: 12px;
+            padding: 8px 10px;
+            border-radius: 8px;
             border: 1px solid rgba(186, 85, 255, 0.3);
             word-break: break-all;
             text-shadow: 0 0 10px rgba(186, 85, 255, 0.5);
         }
 
         .sub-copy-btn {
-            padding: 12px 16px;
-            background: linear-gradient(135deg, #ba55ff, #8a2be2);
-            border: none;
-            border-radius: 12px;
+            padding: 6px 10px;
+            background: rgba(186, 85, 255, 0.2);
+            border: 1px solid rgba(186, 85, 255, 0.4);
+            border-radius: 6px;
             color: #fff;
-            font-size: 13px;
-            font-weight: 600;
+            font-size: 11px;
+            font-weight: 500;
             cursor: pointer;
-            transition: all 0.3s ease;
-            box-shadow: 0 4px 15px rgba(186, 85, 255, 0.4);
-            text-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+            transition: all 0.2s ease;
         }
 
         .sub-copy-btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 25px rgba(186, 85, 255, 0.6);
+            background: rgba(186, 85, 255, 0.35);
         }
 
         .sub-copy-btn:active {
-            transform: translateY(0);
+            transform: scale(0.95);
         }
 
         .subscription-message {
@@ -1811,10 +1808,6 @@
                     </div>
                     <div class="subscription-details">
                         <div class="sub-detail-item">
-                            <span class="sub-label">ID:</span>
-                            <span class="sub-value" id="sub-email">-</span>
-                        </div>
-                        <div class="sub-detail-item">
                             <span class="sub-label">Статус:</span>
                             <span class="sub-value" id="sub-status">-</span>
                         </div>
@@ -1831,7 +1824,7 @@
                         <span class="sub-label">Ссылка для подключения:</span>
                         <div class="sub-link-box">
                             <span class="sub-link-text" id="sub-link">-</span>
-                            <button class="sub-copy-btn" onclick="copySubLink()">📋 Копировать</button>
+                            <button class="sub-copy-btn" onclick="copySubLink()">Копировать</button>
                         </div>
                     </div>
                     <div class="subscription-actions">
