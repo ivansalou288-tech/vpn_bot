@@ -130,9 +130,10 @@ async def payment_webhook(data: PaymentWebhook):
             # Создаём новую подписку
             subscription_result = add_client(21, username, user_id, end_date_str)
         
-        # Записываем продажу в Google Sheets
+        # Записываем продажу в Google Sheets (чистый заработок за вычетом комиссии)
         try:
-            add_vpn_sale(user_id, username, time_months, data.amount)
+            add_vpn_sale(user_id, username, time_months, data.final_amount)
+            print(f"[PayCore] Sale recorded in sheets: user={user_id}, profit={data.final_amount}")
         except Exception as e:
             print(f"[PayCore] Failed to record sale in sheets: {e}")
         
