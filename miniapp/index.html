@@ -1832,6 +1832,12 @@
                         .then(data => {
                             document.getElementById('debugResponse').textContent = JSON.stringify(data, null, 2);
                             document.getElementById('debugError').textContent = '-';
+                            // Update main UI based on response
+                            if (data.success && data.subscription) {
+                                displaySubscription(data.subscription);
+                            } else {
+                                showEmptySubscription();
+                            }
                         })
                         .catch(e => {
                             document.getElementById('debugStatus').textContent = 'error';
@@ -2173,6 +2179,12 @@
                 // Update tab content
                 tabContents.forEach(tab => tab.classList.remove('active'));
                 document.getElementById(targetTab).classList.add('active');
+                
+                // Load subscription data when subscription tab is opened
+                if (targetTab === 'tab-subscription') {
+                    console.log('Subscription tab opened, calling testSubscription...');
+                    setTimeout(testSubscription, 200);
+                }
             });
         });
 
@@ -2367,21 +2379,12 @@
             });
         }
 
-        // Load subscription when subscription tab is clicked
-        const subscriptionTab = document.querySelector('[data-tab="tab-subscription"]');
-        if (subscriptionTab) {
-            subscriptionTab.addEventListener('click', () => {
-                console.log('Subscription tab clicked, loading...');
-                setTimeout(loadSubscription, 100); // Small delay to ensure tab is visible
-            });
-        }
-
-        // Auto-load on page init if subscription tab is active
+        // Auto-load subscription on init if tab is active
         setTimeout(() => {
             const subTab = document.getElementById('tab-subscription');
             if (subTab && subTab.classList.contains('active')) {
-                console.log('Subscription tab is active on init, loading...');
-                loadSubscription();
+                console.log('Subscription tab active on init, loading...');
+                testSubscription();
             }
         }, 500);
         
