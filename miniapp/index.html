@@ -1804,6 +1804,7 @@
                         <span class="debug-value" id="debugError">-</span>
                     </div>
                     <pre class="debug-response" id="debugResponse">Response: -</pre>
+                    <button class="debug-toggle-btn" onclick="loadSubscription()" style="margin-top: 10px; background: linear-gradient(135deg, #ba55ff, #8a2be2);">🔄 Проверить подписку</button>
                 </div>
             </div>
             <button class="debug-toggle-btn" onclick="toggleDebug()" id="debugToggleBtn">🔧 Отладка</button>
@@ -2098,6 +2099,11 @@
 
         // Load user data from Telegram WebApp
         const user = Telegram.WebApp.initDataUnsafe?.user;
+        
+        // Debug: log user data immediately
+        console.log('Telegram WebApp user:', user);
+        console.log('initDataUnsafe:', Telegram.WebApp.initDataUnsafe);
+        
         if (user) {
             const profileName = document.getElementById('profileName');
             const profileId = document.getElementById('profileId');
@@ -2112,6 +2118,8 @@
             if (profileAvatar && user.photo_url) {
                 profileAvatar.innerHTML = `<img src="${user.photo_url}" alt="Avatar">`;
             }
+        } else {
+            console.error('User not found in Telegram.WebApp.initDataUnsafe');
         }
 
         // Theme colors
@@ -2328,13 +2336,28 @@
         }
 
         // Load subscription when subscription tab is clicked
-        document.querySelector('[data-tab="tab-subscription"]').addEventListener('click', () => {
-            loadSubscription();
-        });
+        const subscriptionTab = document.querySelector('[data-tab="tab-subscription"]');
+        if (subscriptionTab) {
+            subscriptionTab.addEventListener('click', () => {
+                console.log('Subscription tab clicked, loading...');
+                setTimeout(loadSubscription, 100); // Small delay to ensure tab is visible
+            });
+        }
 
-        // Also load on page load if user is already on subscription tab
-        if (document.getElementById('tab-subscription').classList.contains('active')) {
-            loadSubscription();
+        // Auto-load on page init if subscription tab is active
+        setTimeout(() => {
+            const subTab = document.getElementById('tab-subscription');
+            if (subTab && subTab.classList.contains('active')) {
+                console.log('Subscription tab is active on init, loading...');
+                loadSubscription();
+            }
+        }, 500);
+        
+        // Initialize debug panel with user info
+        if (user) {
+            updateDebug(user.id, 'init', 'ready', '-', {user: user});
+        } else {
+            updateDebug('no user', '-', 'error', 'User not available', null);
         }
     </script>
 </body>
