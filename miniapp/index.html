@@ -2883,7 +2883,7 @@
                         const discount = p.months >= 12 ? '-30%' : p.months >= 6 ? '-20%' : p.months >= 3 ? '-10%' : '';
                         const discountBadge = discount ? `<span class="price-discount">${discount}</span>` : '';
                         return `
-                            <div class="price-card" onclick="selectPrice(${p.months}, ${p.price})">
+                            <div class="price-card" onclick="selectPrice(this, ${p.months}, ${p.price})">
                                 <div class="price-info">
                                     <span class="price-months">${p.months} ${getMonthsText(p.months)} ${discountBadge}</span>
                                     <span class="price-per-month">${perMonth} ₽/месяц</span>
@@ -2907,10 +2907,10 @@
             return 'месяцев';
         }
 
-        function selectPrice(months, price) {
+        function selectPrice(element, months, price) {
             selectedPrice = { months, price };
             document.querySelectorAll('.price-card').forEach(card => card.classList.remove('selected'));
-            event.currentTarget.classList.add('selected');
+            element.classList.add('selected');
             
             // Navigate to payment page after short delay
             setTimeout(() => showPayment(months, price), 200);
