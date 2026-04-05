@@ -10,6 +10,10 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from main import get_all_prices
 import asyncio
 
+# Import payment functions
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+from payment_api import create_paycore_payment
+
 app = FastAPI(title="VPN Subscription API")
 
 # CORS для доступа из миниаппа
@@ -84,6 +88,54 @@ async def get_prices():
                 {"months": p.time, "price": p.price} for p in prices
             ]
         }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/payment/create")
+async def create_payment(data: dict):
+    """
+    Создаёт платёж через PayCore и возвращает URL для оплаты
+    """
+    try:
+        user_id = data.get('user_id')
+        username = data.get('username', '')
+        months = data.get('months')
+        price = data.get('price')
+        is_renewal = data.get('is_renewal', False)
+        
+        if not all([user_id, months, price]):
+            raise HTTPException(status_code=400, detail="Missing required fields: user_id, months, price")
+        
+        # Операторы получают тестовую цену 1 рубль
+        OPERATOR_IDS = [8489038592, 1401086794]
+        if user_id in OPERATOR_IDS:
+            price = 1
+        
+        months_text = "год" if months == 12 else f"{months} мес."
+        operation_type = "Продление" if is_renewal else "Покупка"
+        
+        result = create_paycore_payment(
+            amount=float(price),
+            description=f"{operation_type} VPN на {months_text}",
+            user_id=user_id,
+            username=username,
+            time_months=months,
+            is_renewal=is_renewal
+        )
+        
+        if result.get("success"):
+            return {
+                "success": True,
+                "payment_url": result.get("payment_url"),
+                "order_id": result.get("order_id")
+            }
+        else:
+            return {
+                "success": False,
+                "error": result.get("error", "Failed to create payment")
+            }
+            
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

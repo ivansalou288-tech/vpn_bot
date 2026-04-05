@@ -2926,8 +2926,54 @@
             Telegram.WebApp.BackButton.show();
         }
 
-        function processPayment() {
-            Telegram.WebApp.showAlert('Оплата в разработке...');
+        async function processPayment() {
+            if (!selectedPrice) {
+                Telegram.WebApp.showAlert('Ошибка: цена не выбрана');
+                return;
+            }
+            
+            if (!user) {
+                Telegram.WebApp.showAlert('Ошибка: пользователь не найден');
+                return;
+            }
+            
+            const btn = document.querySelector('.payment-actions .sub-action-btn');
+            btn.textContent = 'Создание платежа...';
+            btn.disabled = true;
+            
+            try {
+                const response = await fetch(`${API_BASE_URL}/payment/create`, {
+                    method: 'POST',
+                    mode: 'cors',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        user_id: user.id,
+                        username: user.username || '',
+                        months: selectedPrice.months,
+                        price: selectedPrice.price,
+                        is_renewal: true
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success && data.payment_url) {
+                    // Открываем URL оплаты в новой вкладке
+                    window.open(data.payment_url, '_blank');
+                    btn.textContent = 'Перейти к оплате';
+                    btn.disabled = false;
+                } else {
+                    throw new Error(data.error || 'Ошибка создания платежа');
+                }
+            } catch (error) {
+                console.error('Payment error:', error);
+                Telegram.WebApp.showAlert('Ошибка: ' + error.message);
+                btn.textContent = 'Оплатить';
+                btn.disabled = false;
+            }
         }
 
         function buySubscription() {
