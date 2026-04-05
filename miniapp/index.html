@@ -2588,8 +2588,22 @@
             pricesContainer.innerHTML = '<div class="renewal-loading">Загрузка цен...</div>';
             
             try {
-                const response = await fetch(`${API_BASE_URL}/prices`);
+                console.log('Fetching prices from:', `${API_BASE_URL}/prices`);
+                const response = await fetch(`${API_BASE_URL}/prices`, {
+                    method: 'GET',
+                    mode: 'cors',
+                    headers: {
+                        'Accept': 'application/json'
+                    }
+                });
+                console.log('Response status:', response.status);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
                 const data = await response.json();
+                console.log('Prices data:', data);
                 
                 if (data.success && data.prices && data.prices.length > 0) {
                     pricesContainer.innerHTML = data.prices.map(p => {
@@ -2609,7 +2623,7 @@
                 }
             } catch (error) {
                 console.error('Error loading prices:', error);
-                pricesContainer.innerHTML = '<div class="renewal-loading">Ошибка загрузки цен</div>';
+                pricesContainer.innerHTML = `<div class="renewal-loading">Ошибка загрузки цен: ${error.message}</div>`;
             }
         }
 
