@@ -1842,6 +1842,19 @@
             font-size: 18px;
             font-weight: 700;
             color: #fff;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .price-discount {
+            font-size: 11px;
+            font-weight: 700;
+            color: #fff;
+            background: linear-gradient(135deg, #00d26a, #00a854);
+            padding: 3px 8px;
+            border-radius: 12px;
+            text-transform: uppercase;
         }
 
         .price-per-month {
@@ -2607,10 +2620,12 @@
                 if (data.success && data.prices && data.prices.length > 0) {
                     pricesContainer.innerHTML = data.prices.map(p => {
                         const perMonth = Math.round(p.price / p.months);
+                        const discount = p.months >= 12 ? '-30%' : p.months >= 6 ? '-20%' : p.months >= 3 ? '-10%' : '';
+                        const discountBadge = discount ? `<span class="price-discount">${discount}</span>` : '';
                         return `
                             <div class="price-card" onclick="selectPrice(${p.months}, ${p.price})">
                                 <div class="price-info">
-                                    <span class="price-months">${p.months} ${getMonthsText(p.months)}</span>
+                                    <span class="price-months">${p.months} ${getMonthsText(p.months)} ${discountBadge}</span>
                                     <span class="price-per-month">${perMonth} ₽/месяц</span>
                                 </div>
                                 <span class="price-amount">${p.price} ₽</span>
