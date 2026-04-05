@@ -2492,6 +2492,8 @@
             document.getElementById('debugResponse').textContent = response ? JSON.stringify(response, null, 2) : 'Response: -';
         }
 
+        const API_BASE_URL = 'https://ezh-dev.ru:2500';
+
         async function loadSubscription() {
             if (!user) {
                 document.getElementById('subscription-loading').textContent = 'Ошибка: пользователь не найден';
@@ -2579,9 +2581,6 @@
             document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
             document.getElementById('tab-subscription').classList.add('active');
         }
-
-        // Subscription API functions
-        const API_BASE_URL = 'https://ezh-dev.ru:2500';
 
         async function loadPrices() {
             const pricesContainer = document.getElementById('renewal-prices');
