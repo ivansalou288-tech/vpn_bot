@@ -2915,6 +2915,8 @@
         }
 
         function showPayment(months, price) {
+            selectedPrice = { months, price };
+            
             document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
             document.getElementById('tab-payment').classList.add('active');
             
