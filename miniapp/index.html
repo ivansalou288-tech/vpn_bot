@@ -2329,6 +2329,8 @@
         Telegram.WebApp.expand();
         Telegram.WebApp.requestFullscreen();
 
+        var API_BASE_URL = 'https://ezh-dev.ru:2500';
+
         // Enable BackButton API for legal pages and payment page
         Telegram.WebApp.BackButton.onClick(() => {
             const paymentTab = document.getElementById('tab-payment');
@@ -2491,8 +2493,6 @@
             document.getElementById('debugError').textContent = error || '-';
             document.getElementById('debugResponse').textContent = response ? JSON.stringify(response, null, 2) : 'Response: -';
         }
-
-        const API_BASE_URL = 'https://ezh-dev.ru:2500';
 
         async function loadSubscription() {
             if (!user) {
