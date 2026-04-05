@@ -2880,7 +2880,7 @@
                         const discount = p.months >= 12 ? '-30%' : p.months >= 6 ? '-20%' : p.months >= 3 ? '-10%' : '';
                         const discountBadge = discount ? `<span class="price-discount">${discount}</span>` : '';
                         return `
-                            <div class="price-card" onclick="showPayment(${p.months}, ${p.price})" style="cursor:pointer;">
+                            <div class="price-card" data-months="${p.months}" data-price="${p.price}">
                                 <div class="price-info">
                                     <span class="price-months">${p.months} ${getMonthsText(p.months)} ${discountBadge}</span>
                                     <span class="price-per-month">${perMonth} ₽/месяц</span>
@@ -2897,6 +2897,16 @@
                 pricesContainer.innerHTML = `<div class="renewal-loading">Ошибка загрузки цен: ${error.message}</div>`;
             }
         }
+
+        // Set up event delegation once
+        document.getElementById('renewal-prices').addEventListener('click', function(e) {
+            const card = e.target.closest('.price-card');
+            if (card) {
+                const months = parseInt(card.dataset.months);
+                const price = parseInt(card.dataset.price);
+                showPayment(months, price);
+            }
+        });
 
         function getMonthsText(months) {
             if (months === 1) return 'месяц';
