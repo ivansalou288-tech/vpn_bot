@@ -1819,6 +1819,11 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
+            position: relative;
+        }
+
+        .price-card > * {
+            pointer-events: none;
         }
 
         .price-card:hover {
@@ -2883,7 +2888,7 @@
                         const discount = p.months >= 12 ? '-30%' : p.months >= 6 ? '-20%' : p.months >= 3 ? '-10%' : '';
                         const discountBadge = discount ? `<span class="price-discount">${discount}</span>` : '';
                         return `
-                            <div class="price-card" onclick="selectPrice(this, ${p.months}, ${p.price})">
+                            <div class="price-card" data-months="${p.months}" data-price="${p.price}">
                                 <div class="price-info">
                                     <span class="price-months">${p.months} ${getMonthsText(p.months)} ${discountBadge}</span>
                                     <span class="price-per-month">${perMonth} ₽/месяц</span>
@@ -2892,6 +2897,16 @@
                             </div>
                         `;
                     }).join('');
+                    
+                    // Add click handlers after DOM update
+                    document.querySelectorAll('.price-card').forEach(card => {
+                        card.addEventListener('click', function() {
+                            const months = parseInt(this.dataset.months);
+                            const price = parseInt(this.dataset.price);
+                            console.log('Price card clicked', { months, price });
+                            selectPrice(this, months, price);
+                        });
+                    });
                 } else {
                     pricesContainer.innerHTML = '<div class="renewal-loading">Цены не найдены</div>';
                 }
@@ -2908,6 +2923,7 @@
         }
 
         function selectPrice(element, months, price) {
+            console.log('selectPrice called', { months, price });
             selectedPrice = { months, price };
             document.querySelectorAll('.price-card').forEach(card => card.classList.remove('selected'));
             element.classList.add('selected');
