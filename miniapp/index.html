@@ -1794,6 +1794,108 @@
             cursor: pointer;
             width: 100%;
         }
+
+        /* Renewal page styles */
+        .renewal-prices {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-top: 16px;
+        }
+
+        .renewal-loading {
+            text-align: center;
+            color: rgba(255, 255, 255, 0.6);
+            padding: 40px;
+        }
+
+        .price-card {
+            background: linear-gradient(135deg, rgba(138, 43, 226, 0.2), rgba(186, 85, 255, 0.1));
+            border: 2px solid rgba(186, 85, 255, 0.3);
+            border-radius: 16px;
+            padding: 20px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .price-card:hover {
+            border-color: rgba(186, 85, 255, 0.6);
+            box-shadow: 0 4px 20px rgba(186, 85, 255, 0.3);
+            transform: translateY(-2px);
+        }
+
+        .price-card.selected {
+            border-color: #ba55ff;
+            box-shadow: 0 0 30px rgba(186, 85, 255, 0.4);
+        }
+
+        .price-info {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .price-months {
+            font-size: 18px;
+            font-weight: 700;
+            color: #fff;
+        }
+
+        .price-per-month {
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.5);
+        }
+
+        .price-amount {
+            font-size: 24px;
+            font-weight: 800;
+            background: linear-gradient(135deg, #ba55ff, #fff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        /* Payment page styles */
+        .payment-details {
+            background: linear-gradient(135deg, rgba(138, 43, 226, 0.15), rgba(186, 85, 255, 0.1));
+            border: 1px solid rgba(186, 85, 255, 0.3);
+            border-radius: 16px;
+            padding: 24px;
+            margin: 20px 0;
+        }
+
+        .payment-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 0;
+            border-bottom: 1px solid rgba(186, 85, 255, 0.2);
+        }
+
+        .payment-item:last-child {
+            border-bottom: none;
+        }
+
+        .payment-label {
+            font-size: 14px;
+            color: rgba(255, 255, 255, 0.7);
+        }
+
+        .payment-value {
+            font-size: 16px;
+            font-weight: 600;
+            color: #fff;
+        }
+
+        .payment-actions {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-top: 24px;
+        }
     </style>
 </head>
 <body>
@@ -2154,6 +2256,34 @@
             </div>
         </div>
 
+        <!-- Страница продления подписки -->
+        <div id="tab-renewal" class="tab-content">
+            <h1>Продление подписки</h1>
+            <p class="subscription-message">Выберите период продления:</p>
+            <div id="renewal-prices" class="renewal-prices">
+                <div class="renewal-loading">Загрузка цен...</div>
+            </div>
+            <button class="back-btn" onclick="showSubscription()" style="margin-top: 20px;">← Назад</button>
+        </div>
+
+        <!-- Страница оплаты -->
+        <div id="tab-payment" class="tab-content">
+            <h1>Оплата</h1>
+            <div class="payment-details">
+                <div class="payment-item">
+                    <span class="payment-label">Период:</span>
+                    <span class="payment-value" id="payment-period">-</span>
+                </div>
+                <div class="payment-item">
+                    <span class="payment-label">Сумма:</span>
+                    <span class="payment-value" id="payment-amount">-</span>
+                </div>
+            </div>
+            <div class="payment-actions">
+                <button class="sub-action-btn primary" onclick="processPayment()">💳 Оплатить</button>
+            </div>
+        </div>
+
     <!-- Floating Navigation Island -->
     <nav class="nav-island" id="navIsland">
         <button class="nav-item active" data-tab="tab-home">
@@ -2199,9 +2329,15 @@
         Telegram.WebApp.expand();
         Telegram.WebApp.requestFullscreen();
 
-        // Enable BackButton API for legal pages
+        // Enable BackButton API for legal pages and payment page
         Telegram.WebApp.BackButton.onClick(() => {
-            showProfile();
+            const paymentTab = document.getElementById('tab-payment');
+            if (paymentTab && paymentTab.classList.contains('active')) {
+                showRenewal();
+                Telegram.WebApp.BackButton.hide();
+            } else {
+                showProfile();
+            }
         });
 
         // Load user data from Telegram WebApp
@@ -2430,20 +2566,85 @@
             document.getElementById('subscription-empty').style.display = 'block';
         }
 
+        let selectedPrice = null;
+
         function renewSubscription() {
-            Telegram.WebApp.showPopup({
-                title: 'Продление подписки',
-                message: 'Выберите период продления:',
-                buttons: [
-                    { id: '1month', type: 'default', text: '1 месяц' },
-                    { id: '3months', type: 'default', text: '3 месяца' },
-                    { id: 'cancel', type: 'cancel', text: 'Отмена' }
-                ]
-            }, (buttonId) => {
-                if (buttonId !== 'cancel') {
-                    Telegram.WebApp.showAlert('Открываем оплату...');
+            showRenewal();
+        }
+
+        function showRenewal() {
+            document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
+            document.getElementById('tab-renewal').classList.add('active');
+            loadPrices();
+        }
+
+        function showSubscription() {
+            document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
+            document.getElementById('tab-subscription').classList.add('active');
+        }
+
+        async function loadPrices() {
+            const pricesContainer = document.getElementById('renewal-prices');
+            pricesContainer.innerHTML = '<div class="renewal-loading">Загрузка цен...</div>';
+            
+            try {
+                const response = await fetch(`${API_BASE_URL}/prices`);
+                const data = await response.json();
+                
+                if (data.success && data.prices && data.prices.length > 0) {
+                    pricesContainer.innerHTML = data.prices.map(p => {
+                        const perMonth = Math.round(p.price / p.months);
+                        return `
+                            <div class="price-card" onclick="selectPrice(${p.months}, ${p.price})">
+                                <div class="price-info">
+                                    <span class="price-months">${p.months} ${getMonthsText(p.months)}</span>
+                                    <span class="price-per-month">${perMonth} ₽/месяц</span>
+                                </div>
+                                <span class="price-amount">${p.price} ₽</span>
+                            </div>
+                        `;
+                    }).join('');
+                } else {
+                    pricesContainer.innerHTML = '<div class="renewal-loading">Цены не найдены</div>';
                 }
-            });
+            } catch (error) {
+                console.error('Error loading prices:', error);
+                pricesContainer.innerHTML = '<div class="renewal-loading">Ошибка загрузки цен</div>';
+            }
+        }
+
+        function getMonthsText(months) {
+            if (months === 1) return 'месяц';
+            if (months >= 2 && months <= 4) return 'месяца';
+            return 'месяцев';
+        }
+
+        function selectPrice(months, price) {
+            selectedPrice = { months, price };
+            document.querySelectorAll('.price-card').forEach(card => card.classList.remove('selected'));
+            event.currentTarget.classList.add('selected');
+            
+            // Navigate to payment page after short delay
+            setTimeout(() => showPayment(months, price), 200);
+        }
+
+        function showPayment(months, price) {
+            document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
+            document.getElementById('tab-payment').classList.add('active');
+            
+            document.getElementById('payment-period').textContent = `${months} ${getMonthsText(months)}`;
+            document.getElementById('payment-amount').textContent = `${price} ₽`;
+            
+            // Show Telegram BackButton for navigation back to renewal page
+            Telegram.WebApp.BackButton.show();
+        }
+
+        function processPayment() {
+            Telegram.WebApp.showAlert('Оплата в разработке...');
+        }
+
+        function buySubscription() {
+            showRenewal();
         }
 
         function copySubLink() {

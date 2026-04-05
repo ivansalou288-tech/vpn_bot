@@ -1,6 +1,14 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 import api
+import sys
+import os
+
+# Add parent directory to path to import main
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+from main import get_all_prices
+import asyncio
 
 app = FastAPI(title="VPN Subscription API")
 
@@ -59,6 +67,23 @@ async def get_subscription_info(telegram_id: int):
                 "message": "У вас нет активной подписки"
             }
             
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/prices")
+async def get_prices():
+    """
+    Получает все доступные цены на подписку
+    """
+    try:
+        prices = await get_all_prices()
+        return {
+            "success": True,
+            "prices": [
+                {"months": p.time, "price": p.price} for p in prices
+            ]
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
