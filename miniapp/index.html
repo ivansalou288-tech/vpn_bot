@@ -2880,7 +2880,7 @@
                         const discount = p.months >= 12 ? '-30%' : p.months >= 6 ? '-20%' : p.months >= 3 ? '-10%' : '';
                         const discountBadge = discount ? `<span class="price-discount">${discount}</span>` : '';
                         return `
-                            <button class="price-card" data-months="${p.months}" data-price="${p.price}" style="width:100%; border:none; text-align:left;">
+                            <button class="price-card" data-months="${p.months}" data-price="${p.price}" onclick="showPayment(${p.months}, ${p.price})" style="width:100%; border:none; text-align:left; background:inherit; font-family:inherit; color:inherit;">
                                 <div class="price-info">
                                     <span class="price-months">${p.months} ${getMonthsText(p.months)} ${discountBadge}</span>
                                     <span class="price-per-month">${perMonth} ₽/месяц</span>
@@ -2889,16 +2889,6 @@
                             </button>
                         `;
                     }).join('');
-                    
-                    // Add click handlers to buttons
-                    pricesContainer.querySelectorAll('.price-card').forEach(btn => {
-                        btn.addEventListener('click', function(e) {
-                            e.preventDefault();
-                            const months = parseInt(this.dataset.months);
-                            const price = parseInt(this.dataset.price);
-                            showPayment(months, price);
-                        });
-                    });
                 } else {
                     pricesContainer.innerHTML = '<div class="renewal-loading">Цены не найдены</div>';
                 }
