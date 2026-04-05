@@ -2880,13 +2880,13 @@
                         const discount = p.months >= 12 ? '-30%' : p.months >= 6 ? '-20%' : p.months >= 3 ? '-10%' : '';
                         const discountBadge = discount ? `<span class="price-discount">${discount}</span>` : '';
                         return `
-                            <button class="price-card" data-months="${p.months}" data-price="${p.price}" onclick="showPayment(${p.months}, ${p.price})" style="width:100%; border:none; text-align:left; font-family:inherit; color:inherit;">
+                            <div class="price-card" onclick="showPayment(${p.months}, ${p.price})" style="cursor:pointer;">
                                 <div class="price-info">
                                     <span class="price-months">${p.months} ${getMonthsText(p.months)} ${discountBadge}</span>
                                     <span class="price-per-month">${perMonth} ₽/месяц</span>
                                 </div>
                                 <span class="price-amount">${p.price} ₽</span>
-                            </button>
+                            </div>
                         `;
                     }).join('');
                 } else {
