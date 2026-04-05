@@ -1872,15 +1872,35 @@
         }
 
         /* Payment page styles */
-        .payment-details {
-            background: linear-gradient(135deg, rgba(138, 43, 226, 0.15), rgba(186, 85, 255, 0.1));
-            border: 1px solid rgba(186, 85, 255, 0.3);
-            border-radius: 16px;
-            padding: 24px;
+        .payment-card {
+            background: linear-gradient(135deg, rgba(138, 43, 226, 0.2), rgba(186, 85, 255, 0.1));
+            border: 2px solid rgba(186, 85, 255, 0.4);
+            border-radius: 24px;
+            padding: 28px;
             margin: 20px 0;
+            box-shadow: 0 0 30px rgba(186, 85, 255, 0.15);
         }
 
-        .payment-item {
+        .payment-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 24px;
+            padding-bottom: 20px;
+            border-bottom: 1px solid rgba(186, 85, 255, 0.3);
+        }
+
+        .payment-icon {
+            font-size: 32px;
+        }
+
+        .payment-title {
+            font-size: 22px;
+            font-weight: 700;
+            color: #fff;
+        }
+
+        .payment-detail-row {
             display: flex;
             justify-content: space-between;
             align-items: center;
@@ -1888,19 +1908,81 @@
             border-bottom: 1px solid rgba(186, 85, 255, 0.2);
         }
 
-        .payment-item:last-child {
+        .payment-detail-row:last-child {
             border-bottom: none;
         }
 
-        .payment-label {
-            font-size: 14px;
+        .detail-label {
+            font-size: 15px;
             color: rgba(255, 255, 255, 0.7);
         }
 
-        .payment-value {
+        .detail-value {
+            font-size: 15px;
+            font-weight: 600;
+            color: #fff;
+        }
+
+        .detail-value.price {
+            font-size: 18px;
+            font-weight: 700;
+            background: linear-gradient(135deg, #ba55ff, #fff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .payment-features {
+            margin: 24px 0;
+            padding: 20px;
+            background: rgba(138, 43, 226, 0.15);
+            border-radius: 16px;
+        }
+
+        .feature-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 8px 0;
+            font-size: 14px;
+            color: rgba(255, 255, 255, 0.9);
+        }
+
+        .feature-icon {
+            width: 20px;
+            height: 20px;
+            background: linear-gradient(135deg, #ba55ff, #8a2be2);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            color: #fff;
+            flex-shrink: 0;
+        }
+
+        .payment-total {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding-top: 20px;
+            border-top: 2px solid rgba(186, 85, 255, 0.3);
+            margin-top: 20px;
+        }
+
+        .total-label {
             font-size: 16px;
             font-weight: 600;
             color: #fff;
+        }
+
+        .total-amount {
+            font-size: 24px;
+            font-weight: 800;
+            background: linear-gradient(135deg, #ba55ff, #fff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
         }
 
         .payment-actions {
@@ -1911,8 +1993,15 @@
         }
 
         /* Telegram-style Profile */
+        .profile-dark-container {
+            background: rgba(0, 0, 0, 0.5);
+            border-radius: 20px;
+            padding: 24px 16px;
+            margin: 10px;
+        }
+
         .profile-telegram-style {
-            padding: 20px 16px;
+            padding: 0;
         }
 
         .profile-main-header {
@@ -2305,53 +2394,42 @@
 
         <!-- Профиль -->
         <div id="tab-profile" class="tab-content">
-            <div class="profile-telegram-style">
-                <div class="profile-main-header">
-                    <div class="profile-avatar-large" id="profileAvatar">👤</div>
-                    <div class="profile-names">
-                        <span class="profile-display-name" id="profileDisplayName">Имя пользователя</span>
-                        <span class="profile-username" id="profileUsername">@username</span>
-                    </div>
-                </div>
-                <div class="profile-info-list">
-                    <div class="profile-info-item">
-                        <span class="info-label">Telegram ID</span>
-                        <div class="info-value-row">
-                            <span class="info-value" id="profileIdValue">8489038592</span>
-                            <button class="info-action-btn" onclick="copyToClipboard('profileIdValue')">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-                                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-                                </svg>
-                            </button>
+            <div class="profile-dark-container">
+                <div class="profile-telegram-style">
+                    <div class="profile-main-header">
+                        <div class="profile-avatar-large" id="profileAvatar">👤</div>
+                        <div class="profile-names">
+                            <span class="profile-display-name" id="profileDisplayName">Имя пользователя</span>
+                            <span class="profile-username" id="profileUsername">@username</span>
                         </div>
                     </div>
-                    <div class="profile-info-item">
-                        <span class="info-label">Email</span>
-                        <div class="info-value-row">
-                            <span class="info-value not-set">Не указан</span>
-                            <button class="info-action-btn edit-btn">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
-                                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
-                                </svg>
-                            </button>
+                    <div class="profile-info-list">
+                        <div class="profile-info-item">
+                            <span class="info-label">Telegram ID</span>
+                            <div class="info-value-row">
+                                <span class="info-value" id="profileIdValue">8489038592</span>
+                                <button class="info-action-btn" onclick="copyToClipboard('profileIdValue')">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                                    </svg>
+                                </button>
+                            </div>
                         </div>
-                    </div>
-                    <div class="profile-info-item">
-                        <span class="info-label">Дата рождения</span>
-                        <div class="info-value-row">
-                            <span class="info-value not-set">Не указана</span>
-                            <button class="info-action-btn edit-btn">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
-                                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
-                                </svg>
-                            </button>
+                        <div class="profile-info-item">
+                            <span class="info-label">Email</span>
+                            <div class="info-value-row">
+                                <span class="info-value not-set">Не указан</span>
+                                <button class="info-action-btn edit-btn">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                                        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                                    </svg>
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>
-                <button class="profile-main-btn" onclick="showSetBirthday()">Указать дату рождения</button>
             </div>
         </div>
 
@@ -2419,15 +2497,55 @@
 
         <!-- Страница оплаты -->
         <div id="tab-payment" class="tab-content">
-            <h1>Оплата</h1>
-            <div class="payment-details">
-                <div class="payment-item">
-                    <span class="payment-label">Период:</span>
-                    <span class="payment-value" id="payment-period">-</span>
+            <h1>Оформление подписки</h1>
+            <div class="payment-card">
+                <div class="payment-header">
+                    <div class="payment-icon">🔒</div>
+                    <div class="payment-title">VPN Premium</div>
                 </div>
-                <div class="payment-item">
-                    <span class="payment-label">Сумма:</span>
-                    <span class="payment-value" id="payment-amount">-</span>
+                <div class="payment-details">
+                    <div class="payment-detail-row">
+                        <span class="detail-label">Период подписки:</span>
+                        <span class="detail-value" id="payment-period">-</span>
+                    </div>
+                    <div class="payment-detail-row">
+                        <span class="detail-label">Стоимость:</span>
+                        <span class="detail-value price" id="payment-amount">-</span>
+                    </div>
+                    <div class="payment-detail-row">
+                        <span class="detail-label">Трафик:</span>
+                        <span class="detail-value">♾️ Безлимит</span>
+                    </div>
+                    <div class="payment-detail-row">
+                        <span class="detail-label">Скорость:</span>
+                        <span class="detail-value">🚀 Максимальная</span>
+                    </div>
+                    <div class="payment-detail-row">
+                        <span class="detail-label">Устройства:</span>
+                        <span class="detail-value">📱 До 5 устройств</span>
+                    </div>
+                </div>
+                <div class="payment-features">
+                    <div class="feature-item">
+                        <span class="feature-icon">✓</span>
+                        <span>Безлимитный трафик</span>
+                    </div>
+                    <div class="feature-item">
+                        <span class="feature-icon">✓</span>
+                        <span>Высокая скорость</span>
+                    </div>
+                    <div class="feature-item">
+                        <span class="feature-icon">✓</span>
+                        <span>Поддержка 24/7</span>
+                    </div>
+                    <div class="feature-item">
+                        <span class="feature-icon">✓</span>
+                        <span>Гарантия возврата 7 дней</span>
+                    </div>
+                </div>
+                <div class="payment-total">
+                    <span class="total-label">Итого к оплате:</span>
+                    <span class="total-amount" id="payment-total">-</span>
                 </div>
             </div>
             <div class="payment-actions">
@@ -2804,6 +2922,7 @@
             
             document.getElementById('payment-period').textContent = `${months} ${getMonthsText(months)}`;
             document.getElementById('payment-amount').textContent = `${price} ₽`;
+            document.getElementById('payment-total').textContent = `${price} ₽`;
             
             // Show Telegram BackButton for navigation back to renewal page
             Telegram.WebApp.BackButton.show();
