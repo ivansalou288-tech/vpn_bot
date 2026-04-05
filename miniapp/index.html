@@ -2914,15 +2914,32 @@
         function showPayment(months, price) {
             selectedPrice = { months, price };
             
-            document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
-            document.getElementById('tab-payment').classList.add('active');
+            // Hide all tabs
+            document.querySelectorAll('.tab-content').forEach(tab => {
+                tab.classList.remove('active');
+            });
             
-            document.getElementById('payment-period').textContent = `${months} ${getMonthsText(months)}`;
-            document.getElementById('payment-amount').textContent = `${price} ₽`;
-            document.getElementById('payment-total').textContent = `${price} ₽`;
+            // Show payment tab
+            const paymentTab = document.getElementById('tab-payment');
+            if (!paymentTab) {
+                Telegram.WebApp.showAlert('Ошибка: страница оплаты не найдена');
+                return;
+            }
+            paymentTab.classList.add('active');
             
-            // Show Telegram BackButton for navigation back to renewal page
-            Telegram.WebApp.BackButton.show();
+            // Update payment info
+            const periodEl = document.getElementById('payment-period');
+            const amountEl = document.getElementById('payment-amount');
+            const totalEl = document.getElementById('payment-total');
+            
+            if (periodEl) periodEl.textContent = `${months} ${getMonthsText(months)}`;
+            if (amountEl) amountEl.textContent = `${price} ₽`;
+            if (totalEl) totalEl.textContent = `${price} ₽`;
+            
+            // Show Telegram BackButton
+            if (Telegram.WebApp.BackButton) {
+                Telegram.WebApp.BackButton.show();
+            }
         }
 
         async function processPayment() {
