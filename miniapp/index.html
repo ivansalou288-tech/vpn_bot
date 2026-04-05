@@ -2471,9 +2471,6 @@
             document.querySelector('.nav-item[data-tab="tab-instruction"]').classList.add('active');
         }
 
-        // Subscription API functions
-        const API_BASE_URL = 'https://ezh-dev.ru:2500';
-
         // Debug panel functions
         function toggleDebug() {
             const panel = document.getElementById('debugPanel');
@@ -2582,6 +2579,9 @@
             document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
             document.getElementById('tab-subscription').classList.add('active');
         }
+
+        // Subscription API functions
+        const API_BASE_URL = 'https://ezh-dev.ru:2500';
 
         async function loadPrices() {
             const pricesContainer = document.getElementById('renewal-prices');
