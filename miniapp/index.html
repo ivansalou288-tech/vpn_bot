@@ -1822,10 +1822,6 @@
             position: relative;
         }
 
-        .price-card > * {
-            pointer-events: none;
-        }
-
         .price-card:hover {
             border-color: rgba(186, 85, 255, 0.6);
             box-shadow: 0 4px 20px rgba(186, 85, 255, 0.3);
@@ -2888,15 +2884,25 @@
                         const discount = p.months >= 12 ? '-30%' : p.months >= 6 ? '-20%' : p.months >= 3 ? '-10%' : '';
                         const discountBadge = discount ? `<span class="price-discount">${discount}</span>` : '';
                         return `
-                            <div class="price-card" onclick="window.goToPayment(${p.months}, ${p.price})">
+                            <button class="price-card" data-months="${p.months}" data-price="${p.price}" style="width:100%; border:none; text-align:left;">
                                 <div class="price-info">
                                     <span class="price-months">${p.months} ${getMonthsText(p.months)} ${discountBadge}</span>
                                     <span class="price-per-month">${perMonth} ₽/месяц</span>
                                 </div>
                                 <span class="price-amount">${p.price} ₽</span>
-                            </div>
+                            </button>
                         `;
                     }).join('');
+                    
+                    // Add click handlers to buttons
+                    pricesContainer.querySelectorAll('.price-card').forEach(btn => {
+                        btn.addEventListener('click', function(e) {
+                            e.preventDefault();
+                            const months = parseInt(this.dataset.months);
+                            const price = parseInt(this.dataset.price);
+                            showPayment(months, price);
+                        });
+                    });
                 } else {
                     pricesContainer.innerHTML = '<div class="renewal-loading">Цены не найдены</div>';
                 }
@@ -2912,27 +2918,13 @@
             return 'месяцев';
         }
 
-        window.goToPayment = function(months, price) {
-            showPayment(months, price);
-        };
-
         function showPayment(months, price) {
-            console.log('showPayment called', { months, price });
-            
-            const paymentTab = document.getElementById('tab-payment');
-            if (!paymentTab) {
-                console.error('tab-payment element not found!');
-                return;
-            }
-            
             document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
-            paymentTab.classList.add('active');
+            document.getElementById('tab-payment').classList.add('active');
             
             document.getElementById('payment-period').textContent = `${months} ${getMonthsText(months)}`;
             document.getElementById('payment-amount').textContent = `${price} ₽`;
             document.getElementById('payment-total').textContent = `${price} ₽`;
-            
-            console.log('Switched to payment tab');
             
             // Show Telegram BackButton for navigation back to renewal page
             Telegram.WebApp.BackButton.show();
