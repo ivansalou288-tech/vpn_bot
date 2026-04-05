@@ -1851,7 +1851,7 @@
             font-size: 11px;
             font-weight: 700;
             color: #fff;
-            background: linear-gradient(135deg, #00d26a, #00a854);
+            background: linear-gradient(135deg, #ba55ff, #8a2be2);
             padding: 3px 8px;
             border-radius: 12px;
             text-transform: uppercase;
@@ -1908,6 +1908,136 @@
             flex-direction: column;
             gap: 12px;
             margin-top: 24px;
+        }
+
+        /* Telegram-style Profile */
+        .profile-telegram-style {
+            padding: 20px 16px;
+        }
+
+        .profile-main-header {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+
+        .profile-avatar-large {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #ba55ff, #8a2be2);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 36px;
+            flex-shrink: 0;
+            overflow: hidden;
+        }
+
+        .profile-avatar-large img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .profile-names {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .profile-display-name {
+            font-size: 22px;
+            font-weight: 700;
+            color: #fff;
+        }
+
+        .profile-username {
+            font-size: 16px;
+            color: rgba(255, 255, 255, 0.5);
+        }
+
+        .profile-info-list {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+
+        .profile-info-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .info-label {
+            font-size: 15px;
+            color: rgba(255, 255, 255, 0.6);
+        }
+
+        .info-value-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .info-value {
+            font-size: 15px;
+            color: #fff;
+        }
+
+        .info-value.not-set {
+            color: #ff4d4d;
+        }
+
+        .info-action-btn {
+            width: 32px;
+            height: 32px;
+            padding: 0;
+            background: transparent;
+            border: none;
+            color: rgba(255, 255, 255, 0.5);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s ease;
+        }
+
+        .info-action-btn:hover {
+            color: #fff;
+        }
+
+        .info-action-btn svg {
+            width: 20px;
+            height: 20px;
+        }
+
+        .info-action-btn.edit-btn {
+            color: #00a8e8;
+        }
+
+        .info-action-btn.edit-btn:hover {
+            color: #00d4ff;
+        }
+
+        .profile-main-btn {
+            width: 100%;
+            padding: 16px 24px;
+            background: linear-gradient(135deg, #00a8e8, #0077b6);
+            border: none;
+            border-radius: 12px;
+            color: #fff;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .profile-main-btn:hover {
+            box-shadow: 0 4px 20px rgba(0, 168, 232, 0.4);
+            transform: translateY(-2px);
         }
     </style>
 </head>
@@ -2175,45 +2305,53 @@
 
         <!-- Профиль -->
         <div id="tab-profile" class="tab-content">
-            <h1>Профиль</h1>
-            <div class="profile-header">
-                <div class="profile-avatar" id="profileAvatar">👤</div>
-                <div class="profile-info">
-                    <span class="profile-name" id="profileName">@username</span>
-                    <span class="profile-id" id="profileId">ID: 12345678</span>
+            <div class="profile-telegram-style">
+                <div class="profile-main-header">
+                    <div class="profile-avatar-large" id="profileAvatar">👤</div>
+                    <div class="profile-names">
+                        <span class="profile-display-name" id="profileDisplayName">Имя пользователя</span>
+                        <span class="profile-username" id="profileUsername">@username</span>
+                    </div>
                 </div>
-            </div>
-            <div class="profile-status">
-                <div class="status-item">
-                    <span class="status-label">Тариф</span>
-                    <span class="status-value premium">Премиум</span>
+                <div class="profile-info-list">
+                    <div class="profile-info-item">
+                        <span class="info-label">Telegram ID</span>
+                        <div class="info-value-row">
+                            <span class="info-value" id="profileIdValue">8489038592</span>
+                            <button class="info-action-btn" onclick="copyToClipboard('profileIdValue')">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="profile-info-item">
+                        <span class="info-label">Email</span>
+                        <div class="info-value-row">
+                            <span class="info-value not-set">Не указан</span>
+                            <button class="info-action-btn edit-btn">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="profile-info-item">
+                        <span class="info-label">Дата рождения</span>
+                        <div class="info-value-row">
+                            <span class="info-value not-set">Не указана</span>
+                            <button class="info-action-btn edit-btn">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
                 </div>
-                <div class="status-item">
-                    <span class="status-label">До окончания</span>
-                    <span class="status-value">27 дней</span>
-                </div>
-            </div>
-            <div class="profile-section">
-                <button class="profile-btn">
-                    <span>💬 Чат поддержки</span>
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <polyline points="9 18 15 12 9 6"></polyline>
-                    </svg>
-                </button>
-            </div>
-            <div class="profile-section">
-                <button class="profile-btn" onclick="showPrivacyPolicy()">
-                    <span>🔒 Политика конфиденциальности</span>
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <polyline points="9 18 15 12 9 6"></polyline>
-                    </svg>
-                </button>
-                <button class="profile-btn" onclick="showPublicOffer()">
-                    <span>📄 Публичная оферта</span>
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <polyline points="9 18 15 12 9 6"></polyline>
-                    </svg>
-                </button>
+                <button class="profile-main-btn" onclick="showSetBirthday()">Указать дату рождения</button>
             </div>
         </div>
 
@@ -2363,15 +2501,19 @@
         console.log('initDataUnsafe:', Telegram.WebApp.initDataUnsafe);
         
         if (user) {
-            const profileName = document.getElementById('profileName');
-            const profileId = document.getElementById('profileId');
+            const profileDisplayName = document.getElementById('profileDisplayName');
+            const profileUsername = document.getElementById('profileUsername');
+            const profileIdValue = document.getElementById('profileIdValue');
             const profileAvatar = document.getElementById('profileAvatar');
 
-            if (profileName) {
-                profileName.textContent = user.username ? '@' + user.username : user.first_name || 'Пользователь';
+            if (profileDisplayName) {
+                profileDisplayName.textContent = user.first_name || user.username || 'Пользователь';
             }
-            if (profileId) {
-                profileId.textContent = 'ID: ' + user.id;
+            if (profileUsername) {
+                profileUsername.textContent = user.username ? '@' + user.username : '@user' + user.id;
+            }
+            if (profileIdValue) {
+                profileIdValue.textContent = user.id;
             }
             if (profileAvatar && user.photo_url) {
                 profileAvatar.innerHTML = `<img src="${user.photo_url}" alt="Avatar">`;
@@ -2687,7 +2829,20 @@
             }
         }
 
-        // Auto-load subscription on init if tab is active
+        function copyToClipboard(elementId) {
+            const element = document.getElementById(elementId);
+            if (element) {
+                navigator.clipboard.writeText(element.textContent).then(() => {
+                    Telegram.WebApp.showAlert('Скопировано!');
+                }).catch(() => {
+                    Telegram.WebApp.showAlert('Ошибка копирования');
+                });
+            }
+        }
+
+        function showSetBirthday() {
+            Telegram.WebApp.showAlert('Функция в разработке');
+        }
         setTimeout(() => {
             const subTab = document.getElementById('tab-subscription');
             if (subTab && subTab.classList.contains('active')) {
