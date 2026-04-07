@@ -290,13 +290,28 @@ async def send_payment_notifications(payment, data, subscription_result, end_dat
         )
         
         # Отправляем пользователю
-        await bot.send_message(
-            chat_id=user_id,
-            text=user_message,
-            reply_markup=user_keyboard,
-            parse_mode=ParseMode.HTML
-        )
-        print(f"[PayCore Webhook] Notification sent to user {user_id}")
+        try:
+            print(f"[PayCore Webhook] Sending message to user {user_id}...")
+            await bot.send_message(
+                chat_id=user_id,
+                text=user_message,
+                reply_markup=user_keyboard,
+                parse_mode=ParseMode.HTML
+            )
+            print(f"[PayCore Webhook] Notification sent to user {user_id}")
+        except Exception as e:
+            print(f"[PayCore Webhook] FAILED to send to user {user_id}: {e}")
+            import traceback
+            traceback.print_exc()
+            # Попробуем отправить без клавиатуры и HTML
+            try:
+                await bot.send_message(
+                    chat_id=user_id,
+                    text=f"✅ Оплата успешна! Период: {time_months} мес."
+                )
+                print(f"[PayCore Webhook] Simple message sent to user {user_id}")
+            except Exception as e2:
+                print(f"[PayCore Webhook] FAILED simple message to {user_id}: {e2}")
         
         # Удаляем старое сообщение об оплате
         if payment.message_id:
