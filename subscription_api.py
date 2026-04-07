@@ -28,6 +28,20 @@ WEBHOOK_PATH = "/payment/webhook"
 
 app = FastAPI(title="VPN Subscription API")
 
+# Middleware для логирования всех запросов
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    print(f"[REQUEST] {request.method} {request.url.path} - Headers: {dict(request.headers)}")
+    try:
+        body = await request.body()
+        if body:
+            print(f"[REQUEST] Body: {body.decode()[:500]}")
+    except:
+        pass
+    response = await call_next(request)
+    print(f"[RESPONSE] {response.status_code}")
+    return response
+
 # CORS для доступа из миниаппа
 app.add_middleware(
     CORSMiddleware,
@@ -327,4 +341,6 @@ async def send_payment_notifications(payment, data, subscription_result, end_dat
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=2500, ssl_keyfile='/etc/letsencrypt/live/ezh-dev.ru/privkey.pem', ssl_certfile='/etc/letsencrypt/live/ezh-dev.ru/cert.pem')
+    uvicorn.run(app, host="0.0.0.0", port=2500, 
+                ssl_keyfile='/etc/letsencrypt/live/ezh-dev.ru/privkey.pem', 
+                ssl_certfile='/etc/letsencrypt/live/ezh-dev.ru/fullchain.pem')
