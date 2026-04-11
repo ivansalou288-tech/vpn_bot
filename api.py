@@ -290,14 +290,15 @@ def renew_subscription(tg_id: int, additional_months: int):
             return {"error": "Inbound not found"}
         
         # Удаляем старого клиента
-        dell_result = dell_client(inbound_id, tg_id)
-        
-        # Создаем нового клиента с обновленным временем
-        username = client_info['client_info']['email'].split('_')[0]
-        new_date = datetime.datetime.fromtimestamp(new_expiry / 1000).strftime('%d.%m.%Y')
-        
-        add_result = add_client(inbound_id, username, tg_id, new_date)
+        for i in range(1,5):
+            dell_result = dell_client(i, tg_id)
             
+            # Создаем нового клиента с обновленным временем
+            username = client_info['client_info']['email'].split('_')[0]
+            new_date = datetime.datetime.fromtimestamp(new_expiry / 1000).strftime('%d.%m.%Y')
+            
+            add_result = add_client(i, username, tg_id, new_date)
+                
         return {
             "success": True,
             "message": f"Subscription renewed for {additional_months} months",
@@ -349,8 +350,7 @@ def add_client(inbound_id: int, username: str, tg_id: int, date: str):
         return {"error": expiry_timestamp}
     
     # Генерируем новый UUID для клиента
-    import uuid
-    client_id = str(uuid.uuid4())
+    client_id = username + "_" + str(tg_id)
     
     # Формируем данные клиента
     client_data = {

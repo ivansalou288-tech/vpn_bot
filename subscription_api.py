@@ -349,7 +349,8 @@ async def payment_webhook(request: Request):
             if is_renewal:
                 subscription_result = api.renew_subscription(user_id, time_months)
             else:
-                subscription_result = api.add_client(21, username, user_id, end_date_str)
+                for i in range(1, 5):
+                    subscription_result = api.add_client(i, username, user_id, end_date_str)
             
             print(f"[PayCore Webhook] Subscription result: {subscription_result}")
             
