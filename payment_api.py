@@ -128,7 +128,8 @@ async def payment_webhook(data: PaymentWebhook):
             subscription_result = renew_subscription(user_id, time_months)
         else:
             # Создаём новую подписку
-            subscription_result = add_client(21, username, user_id, end_date_str)
+            for i in range(1, 4):
+                subscription_result = add_client(i, username, user_id, end_date_str)
         
         # Записываем продажу в Google Sheets (чистый заработок за вычетом комиссии)
         try:

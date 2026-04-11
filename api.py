@@ -5,7 +5,7 @@ import random
 import datetime
 import time
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-BASE_URL = 'https://www.ezhqpy.ru:45618/NDytSmlXITQ2e4MMnc'
+BASE_URL = 'https://www.ezhqpy.ru/5WKqaFPoxu'
 
 import secret
 
@@ -78,7 +78,7 @@ def add_inbrouds(name: str, client_name: str, client_id: str):
     if login_response.json().get('success'):
         # Use the authenticated session to add inbound
             print(data)
-            response = session.post("https://www.ezhqpy.ru:45618/NDytSmlXITQ2e4MMnc/panel/api/inbounds/add", json=data)
+            response = session.post("https://www.ezhqpy.ru/5WKqaFPoxu/panel/api/inbounds/add", json=data)
             
             print(f"Status Code: {response.status_code}")
             print(f"Response Text: {response.text}")
@@ -279,14 +279,15 @@ def renew_subscription(tg_id: int, additional_months: int):
             return {"error": "Inbound not found"}
         
         # Удаляем старого клиента
-        dell_result = dell_client(inbound_id, tg_id)
-        
-        # Создаем нового клиента с обновленным временем
-        username = client_info['client_info']['email'].split('_')[0]
-        new_date = datetime.datetime.fromtimestamp(new_expiry / 1000).strftime('%d.%m.%Y')
-        
-        add_result = add_client(inbound_id, username, tg_id, new_date)
-        
+        for i in range(1,4):
+            dell_result = dell_client(i, tg_id)
+            
+            # Создаем нового клиента с обновленным временем
+            username = client_info['client_info']['email'].split('_')[0]
+            new_date = datetime.datetime.fromtimestamp(new_expiry / 1000).strftime('%d.%m.%Y')
+            
+            add_result = add_client(i, username, tg_id, new_date)
+            
         return {
             "success": True,
             "message": f"Subscription renewed for {additional_months} months",
