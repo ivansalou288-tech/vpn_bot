@@ -356,7 +356,7 @@ def add_client(inbound_id: int, username: str, tg_id: int, date: str):
     client_data = {
         "id": client_id,
         "flow": "",
-        "email": f"{username}_{tg_id}",  # Уникальный email с доменом
+        "email": f"{username}_{tg_id}_{inbound_id}",  # Уникальный email с доменом
         "limitIp": 0,
         "totalGB": 0,
         "expiryTime": expiry_timestamp,
