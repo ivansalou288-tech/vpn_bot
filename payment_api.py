@@ -1,5 +1,6 @@
 from fastapi import FastAPI, HTTPException, Header, Request
 from pydantic import BaseModel
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import Column, Integer, String, Float, DateTime, create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
@@ -72,6 +73,15 @@ class PaymentInit(BaseModel):
 
 # FastAPI приложение
 app = FastAPI(title="VPN Bot Payment API")
+
+# Добавляем CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["*"]
+)
 
 # Ссылка на бот для уведомлений
 bot_instance = None
@@ -348,7 +358,12 @@ def get_payment_status(order_id: str):
 @app.get("/payment/test")
 def test_webhook():
     """Тестовый endpoint для проверки доступности webhook"""
-    return {"status": "webhook is accessible", "url": "/payment/webhook"}
+    return {"status": "webhook is accessible", "url": "/payment/webhook", "method": "GET"}
+
+@app.options("/payment/test")
+def test_webhook_options():
+    """Поддерживает OPTIONS для CORS"""
+    return {"status": "webhook is accessible", "method": "OPTIONS"}
 
 if __name__ == "__main__":
     import uvicorn
