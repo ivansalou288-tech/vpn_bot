@@ -505,8 +505,9 @@ admin_keyboard = InlineKeyboardMarkup(
         [InlineKeyboardButton(text="💰 Цены", callback_data="admin_prices", style="primary")],
         [InlineKeyboardButton(text="📝 Информация", callback_data="admin_info", style="primary")],
         [InlineKeyboardButton(text="📞 Контакты", callback_data="admin_contacts", style="primary")],
-        [InlineKeyboardButton(text="� Рассылка", callback_data="admin_broadcast", style="primary")],
-        [InlineKeyboardButton(text="�� Назад", callback_data="back_to_main", style="primary")]
+        [InlineKeyboardButton(text="👤 Добавить клиента", callback_data="admin_add_client", style="primary")],
+        [InlineKeyboardButton(text="📢 Рассылка", callback_data="admin_broadcast", style="primary")],
+        [InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_main", style="primary")]
     ]
 )
 
@@ -586,6 +587,98 @@ async def referral_command(message: types.Message):
         "Делитесь ссылкой и получайте бонусы! 🚀",
         parse_mode=ParseMode.HTML
     )
+
+@router.message(Command("add_client"))
+async def add_client_command(message: types.Message):
+    """Добавляет клиента по TG ID (только для админа)"""
+    if not is_admin(message.from_user.id):
+        await message.answer("⛔ У вас нет прав для выполнения этой команды.")
+        return
+    
+    # Получаем аргументы команды
+    args = message.text.split()
+    
+    if len(args) < 2:
+        await message.answer(
+            "👤 <b>Добавление клиента</b>\n\n"
+            "Использование:\n"
+            "<code>/add_client TG_ID [месяцы]</code>\n\n"
+            "Примеры:\n"
+            "<code>/add_client 8489038592</code> - на 1 месяц\n"
+            "<code>/add_client 8489038592 3</code> - на 3 месяца\n\n"
+            "Или просто отправьте TG ID пользователя сообщением.",
+            parse_mode=ParseMode.HTML
+        )
+        return
+    
+    tg_id = args[1]
+    months = 1  # по умолчанию
+    
+    if len(args) >= 3:
+        try:
+            months = int(args[2])
+        except ValueError:
+            months = 1
+    
+    try:
+        tg_id = int(tg_id)
+    except ValueError:
+        await message.answer("❌ Неверный формат Telegram ID. Используйте только цифры.")
+        return
+    
+    # Показываем статус добавления
+    status_message = await message.answer(f"🔄 Добавляю клиента TG ID: {tg_id}...")
+    
+    try:
+        import requests
+        
+        # Вызываем API endpoint
+        response = requests.post(
+            "https://panel.ezhqpy.ru:2500/admin/add_client",
+            json={
+                "tg_id": tg_id,
+                "months": months
+            },
+            verify=False,
+            timeout=30
+        )
+        
+        if response.status_code == 200:
+            result = response.json()
+            
+            if result.get('success'):
+                await status_message.edit_text(
+                    f"✅ <b>Клиент успешно добавлен!</b>\n\n"
+                    f"👤 Telegram ID: <code>{tg_id}</code>\n"
+                    f"📅 Период: <b>{months} месяц{'ев' if months > 1 and months < 5 else 'ев' if months > 4 else ''}</b>\n"
+                    f"📝 Username: <code>{result.get('username', 'N/A')}</code>\n"
+                    f"🔑 SubID: <code>{result.get('subId', 'N/A')}</code>\n"
+                    f"📅 Дата окончания: <b>{result.get('end_date', 'N/A')}</b>",
+                    parse_mode=ParseMode.HTML
+                )
+            else:
+                await status_message.edit_text(
+                    f"❌ <b>Ошибка при добавлении клиента</b>\n\n"
+                    f"👤 Telegram ID: <code>{tg_id}</code>\n"
+                    f"🔍 Ошибка: <code>{result.get('error', 'Unknown error')}</code>",
+                    parse_mode=ParseMode.HTML
+                )
+        else:
+            await status_message.edit_text(
+                f"❌ <b>Ошибка API</b>\n\n"
+                f"👤 Telegram ID: <code>{tg_id}</code>\n"
+                f"🔍 Status: <code>{response.status_code}</code>\n"
+                f"📝 Response: <code>{response.text[:200]}</code>",
+                parse_mode=ParseMode.HTML
+            )
+            
+    except Exception as e:
+        await status_message.edit_text(
+            f"❌ <b>Критическая ошибка</b>\n\n"
+            f"👤 Telegram ID: <code>{tg_id}</code>\n"
+            f"🔍 Ошибка: <code>{str(e)}</code>",
+            parse_mode=ParseMode.HTML
+        )
 
 @router.message(Command("notify"))
 async def broadcast_command(message: types.Message):
@@ -1787,6 +1880,26 @@ async def admin_contacts_callback(callback: types.CallbackQuery):
         await callback.message.answer(
             f"📞 <b>Текущие контакты:</b>\n\n{contact_text}\n\nВыберите действие:",
             reply_markup=contacts_management_keyboard,
+            parse_mode=ParseMode.HTML
+        )
+
+@router.callback_query(lambda callback: callback.data == "admin_add_client")
+async def admin_add_client_callback(callback: types.CallbackQuery):
+    await callback.answer()
+    
+    if is_admin(callback.from_user.id):
+        try:
+            await callback.message.delete()
+        except:
+            pass
+        
+        await callback.message.answer(
+            "👤 <b>Добавление клиента</b>\n\n"
+            "Отправьте Telegram ID пользователя:\n\n"
+            "Пример: <code>8489038592</code>\n\n"
+            "Или используйте команду:\n"
+            "<code>/add_client 8489038592 1</code>\n"
+            "где 1 - количество месяцев",
             parse_mode=ParseMode.HTML
         )
 

@@ -476,6 +476,57 @@ async def send_payment_notifications(payment, data, subscription_result, end_dat
         import traceback
         traceback.print_exc()
 
+@app.post("/admin/add_client")
+async def admin_add_client_endpoint(request: dict):
+    """Админ endpoint: добавить клиента по TG ID"""
+    try:
+        tg_id = request.get('tg_id')
+        months = request.get('months', 1)
+        
+        if not tg_id:
+            return {
+                "success": False,
+                "error": "TG ID is required"
+            }
+        
+        print(f"[ADMIN API] Request to add client: TG ID={tg_id}, months={months}")
+        
+        # Вызываем админ функцию
+        from api_extended import admin_add_client
+        result = admin_add_client(int(tg_id), int(months))
+        
+        print(f"[ADMIN API] Result: {result}")
+        
+        return result
+        
+    except Exception as e:
+        print(f"[ADMIN API] Error: {e}")
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+@app.get("/admin/add_client/{tg_id}")
+async def admin_add_client_get(tg_id: int, months: int = 1):
+    """Админ endpoint: добавить клиента по TG ID (GET запрос)"""
+    try:
+        print(f"[ADMIN API] GET request to add client: TG ID={tg_id}, months={months}")
+        
+        # Вызываем админ функцию
+        from api_extended import admin_add_client
+        result = admin_add_client(tg_id, months)
+        
+        print(f"[ADMIN API] Result: {result}")
+        
+        return result
+        
+    except Exception as e:
+        print(f"[ADMIN API] Error: {e}")
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
 
 if __name__ == "__main__":
     import uvicorn

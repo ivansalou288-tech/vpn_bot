@@ -195,3 +195,54 @@ def getSubById(telegram_id):
                         }
     
     return {"error": f"No client found with tgId: {telegram_id}"}
+
+def admin_add_client(tg_id: int, months: int = 1):
+    """Админ функция: добавляет клиента по TG ID на все 4 подключения"""
+    import random
+    import string
+    from datetime import datetime, timedelta
+    import time
+    
+    try:
+        # Генерируем случайный username (email)
+        random_username = ''.join(random.choices(string.ascii_lowercase + string.digits, k=8))
+        
+        # Генерируем уникальный subId для этого клиента
+        import uuid
+        unique_subId = f"admin_{uuid.uuid4().hex[:8]}"
+        
+        # Рассчитываем дату окончания
+        current_time = int(time.time() * 1000)
+        additional_time = months * 30 * 24 * 60 * 60 * 1000  # месяцев в миллисекундах
+        new_expiry = current_time + additional_time
+        end_date = datetime.fromtimestamp(new_expiry / 1000).strftime('%d.%m.%Y')
+        
+        print(f"[ADMIN] Adding client for TG ID: {tg_id}")
+        print(f"[ADMIN] Generated username: {random_username}")
+        print(f"[ADMIN] Generated subId: {unique_subId}")
+        print(f"[ADMIN] End date: {end_date}")
+        
+        # Проверяем, существует ли уже клиент
+        existing_client = getSubById(tg_id)
+        if existing_client.get('success'):
+            print(f"[ADMIN] Client already exists, renewing...")
+            # Клиент существует, продлеваем подписку
+            result = renew_subscription_all_inbounds(tg_id, months)
+        else:
+            print(f"[ADMIN] Creating new client...")
+            # Создаем нового клиента
+            result = add_client_to_all_inbounds(random_username, tg_id, end_date)
+        
+        return {
+            "success": True,
+            "message": f"Client {'renewed' if existing_client.get('success') else 'added'} successfully",
+            "tg_id": tg_id,
+            "username": random_username,
+            "subId": unique_subId,
+            "months": months,
+            "end_date": end_date,
+            "result": result
+        }
+        
+    except Exception as e:
+        return {"error": str(e)}
