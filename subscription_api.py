@@ -170,6 +170,21 @@ async def create_payment(data: dict):
 async def health_check():
     return {"status": "ok"}
 
+@app.get("/")
+async def root():
+    """Корневой endpoint для проверки доступности сервера"""
+    return {
+        "status": "VPN Subscription API is running",
+        "version": "1.0",
+        "endpoints": {
+            "subscription": "/subscription/{telegram_id}",
+            "prices": "/prices",
+            "payment_create": "/payment/create",
+            "payment_webhook": "/payment/webhook",
+            "health": "/health"
+        }
+    }
+
 
 @app.post("/payment/webhook")
 async def payment_webhook(request: Request):
