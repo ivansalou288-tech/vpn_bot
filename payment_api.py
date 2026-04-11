@@ -79,7 +79,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD", "PATCH"],
     allow_headers=["*"]
 )
 
@@ -360,10 +360,20 @@ def test_webhook():
     """Тестовый endpoint для проверки доступности webhook"""
     return {"status": "webhook is accessible", "url": "/payment/webhook", "method": "GET"}
 
+@app.post("/payment/test")
+def test_webhook_post():
+    """Тестовый POST endpoint"""
+    return {"status": "webhook is accessible", "url": "/payment/webhook", "method": "POST"}
+
 @app.options("/payment/test")
 def test_webhook_options():
     """Поддерживает OPTIONS для CORS"""
     return {"status": "webhook is accessible", "method": "OPTIONS"}
+
+@app.get("/")
+def root():
+    """Корневой endpoint для проверки доступности"""
+    return {"status": "VPN Bot Payment API is running", "version": "1.0"}
 
 if __name__ == "__main__":
     import uvicorn
