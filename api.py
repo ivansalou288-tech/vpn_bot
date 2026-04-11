@@ -5,7 +5,7 @@ import random
 import datetime
 import time
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-BASE_URL = 'https://www.ezhqpy.ru/5WKqaFPoxu'
+BASE_URL = 'https://www.ezhqpy.ru/fHvt2YpAP8/'
 
 import secret
 
