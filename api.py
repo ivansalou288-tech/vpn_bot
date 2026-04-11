@@ -210,7 +210,7 @@ def getSubById(telegram_id):
                     client_tgId = client.get('tgId')
                     # Convert both to string for comparison to handle different types
                     if str(client_tgId) == str(telegram_id):
-                        # Return the subId if found
+                        # Return subId if found
                         return {
                             "success": True,
                             "subId": client.get('subId'),
@@ -220,12 +220,12 @@ def getSubById(telegram_id):
                                 "enable": client.get('enable'),
                                 "expiryTime": client.get('expiryTime'),
                                 "totalGB": client.get('totalGB')
-                            }
+                            },
+                            "inbound_id": inbound.get('id')  # Добавляем inbound_id для удаления
                         }
     
     # If no client found with matching tgId
     return {"error": f"No client found with tgId: {telegram_id}"}
-    
 
 
 def renew_subscription(tg_id: int, additional_months: int):
@@ -251,42 +251,20 @@ def renew_subscription(tg_id: int, additional_months: int):
         additional_time = additional_months * 30 * 24 * 60 * 60 * 1000  # Приблизительно месяцев в миллисекундах
         new_expiry += additional_time
         
-        # Получаем inboundId для обновления
-        clients_data = get_clients()
-        inbound_id = None
-        
-        if clients_data.get('success'):
-            inbounds = clients_data.get('obj', [])
-            for inbound in inbounds:
-                if 'settings' in inbound:
-                    settings = inbound['settings']
-                    if isinstance(settings, str):
-                        try:
-                            settings = json.loads(settings)
-                        except json.JSONDecodeError:
-                            continue
-                    
-                    if 'clients' in settings:
-                        clients = settings['clients']
-                        for client in clients:
-                            if str(client.get('tgId')) == str(tg_id):
-                                inbound_id = inbound.get('id')
-                                break
-                    if inbound_id:
-                        break
+        # Используем inbound_id из getSubById
+        inbound_id = client_info.get('inbound_id')
         
         if not inbound_id:
             return {"error": "Inbound not found"}
         
         # Удаляем старого клиента
-        for i in range(1,4):
-            dell_result = dell_client(i, tg_id)
-            
-            # Создаем нового клиента с обновленным временем
-            username = client_info['client_info']['email'].split('_')[0]
-            new_date = datetime.datetime.fromtimestamp(new_expiry / 1000).strftime('%d.%m.%Y')
-            
-            add_result = add_client(i, username, tg_id, new_date)
+        dell_result = dell_client(inbound_id, tg_id)
+        
+        # Создаем нового клиента с обновленным временем
+        username = client_info['client_info']['email'].split('_')[0]
+        new_date = datetime.datetime.fromtimestamp(new_expiry / 1000).strftime('%d.%m.%Y')
+        
+        add_result = add_client(inbound_id, username, tg_id, new_date)
             
         return {
             "success": True,
