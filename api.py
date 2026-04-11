@@ -460,15 +460,15 @@ def add_client(inbound_id: int, username: str, tg_id: int, date: str):
         client_email = str(client.get('email', ''))
         new_email = str(client_data.get('email', ''))
         
-        # Удаляем если:
-        # 1. tgId совпадает (для обновления подписки)
-        # 2. email совпадает ТОЧНО (для избежания дублирования)
-        # 3. Это тестовый клиент (email начинается с 'first' или tgId пустой/0)
+        # Для админ функции удаляем ВСЕ существующих клиентов
+        # чтобы освободить inbound для нового клиента
         should_remove = (
             client_tgId == str(tg_id) or 
             client_email == new_email or
             client_email.startswith('first') or
-            client_tgId in ['', '0']
+            client_tgId in ['', '0'] or
+            # Для админ функции: удаляем всех клиентов чтобы освободить inbound
+            (client_tgId != '' and client_tgId != '0' and client_tgId != str(tg_id))
         )
         
         print(f"[API] Checking client: tgId={client_tgId}, email={client_email}")
