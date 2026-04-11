@@ -482,6 +482,6 @@ if __name__ == "__main__":
     print("[Subscription API] HTTP server on port 2501 (for testing)")
     
     # Запускаем HTTPS сервер с SSL
-    uvicorn.run(app, host="0.0.0.0", port=8765, 
+    uvicorn.run(app, host="0.0.0.0", port=2500, 
                 ssl_keyfile='/etc/letsencrypt/live/www.ezhqpy.ru/privkey.pem', 
                 ssl_certfile='/etc/letsencrypt/live/www.ezhqpy.ru/fullchain.pem')
