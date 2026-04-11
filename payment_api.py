@@ -353,10 +353,10 @@ def test_webhook():
 if __name__ == "__main__":
     import uvicorn
     print("[PayCore] Starting payment API server...")
-    print(f"[PayCore] Webhook URL: https://www.ezhqpy.ru:2556/payment/webhook")
-    print(f"[PayCore] Test URL: https://www.ezhqpy.ru:2556/payment/test")
+    print(f"[PayCore] Webhook URL: https://www.ezhqpy.ru:2500/payment/webhook")
+    print(f"[PayCore] Test URL: https://www.ezhqpy.ru:2500/payment/test")
     
     # Используем fullchain.pem вместо cert.pem для полной цепочки сертификатов
-    uvicorn.run(app, host="0.0.0.0", port=2556, 
+    uvicorn.run(app, host="0.0.0.0", port=2500, 
                 ssl_keyfile='/etc/letsencrypt/live/www.ezhqpy.ru/privkey.pem', 
                 ssl_certfile='/etc/letsencrypt/live/www.ezhqpy.ru/fullchain.pem')
