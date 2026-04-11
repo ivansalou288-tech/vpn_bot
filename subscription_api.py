@@ -185,20 +185,20 @@ async def root():
         }
     }
 
-@app.get("/payment/webhook")
-def webhook_get():
-    """GET endpoint для проверки доступности webhook от PayCore"""
-    print(f"[PayCore Webhook] ========== WEBHOOK GET REQUEST ==========")
-    print(f"[PayCore Webhook] Timestamp: {datetime.now()}")
-    print(f"[PayCore Webhook] Webhook is accessible via GET request")
-    print(f"[PayCore Webhook] PayCore should use POST method for actual notifications")
-    return {
-        "status": "Webhook endpoint is accessible",
-        "method": "GET",
-        "note": "PayCore should use POST method for payment notifications",
-        "webhook_url": "https://www.ezhqpy.ru:2500/payment/webhook",
-        "timestamp": datetime.now().isoformat()
-    }
+# @app.get("/payment/webhook")
+# def webhook_get():
+#     """GET endpoint для проверки доступности webhook от PayCore"""
+#     print(f"[PayCore Webhook] ========== WEBHOOK GET REQUEST ==========")
+#     print(f"[PayCore Webhook] Timestamp: {datetime.now()}")
+#     print(f"[PayCore Webhook] Webhook is accessible via GET request")
+#     print(f"[PayCore Webhook] PayCore should use POST method for actual notifications")
+#     return {
+#         "status": "Webhook endpoint is accessible",
+#         "method": "GET",
+#         "note": "PayCore should use POST method for payment notifications",
+#         "webhook_url": "https://www.ezhqpy.ru:2500/payment/webhook",
+#         "timestamp": datetime.now().isoformat()
+#     }
 
 @app.post("/payment/test-webhook")
 async def test_webhook_endpoint():
@@ -211,6 +211,73 @@ async def test_webhook_endpoint():
         "message": "Webhook endpoint is working correctly",
         "timestamp": datetime.now().isoformat()
     }
+
+@app.post("/payment/trigger-webhook")
+async def trigger_webhook_manual(order_id: str):
+    """Ручной триггер webhook для симуляции оплаты PayCore"""
+    print(f"[PayCore Webhook] ========== MANUAL WEBHOOK TRIGGER ==========")
+    print(f"[PayCore Webhook] Timestamp: {datetime.now()}")
+    print(f"[PayCore Webhook] Triggering webhook for order: {order_id}")
+    
+    db = SessionLocal()
+    try:
+        # Ищем платёж в БД
+        payment = db.query(Payment).filter(Payment.order_id == order_id).first()
+        if not payment:
+            return {"error": f"Payment {order_id} not found"}
+        
+        # Симулируем данные от PayCore
+        webhook_data = {
+            "order_id": payment.paycore_order_id or order_id,
+            "amount": payment.amount,
+            "final_amount": payment.amount,
+            "commission_amount": 0,
+            "status": "completed"
+        }
+        
+        print(f"[PayCore Webhook] Simulated webhook data: {webhook_data}")
+        
+        # Вызываем основной обработчик webhook
+        from fastapi import Request
+        from fastapi.testclient import TestClient
+        
+        # Создаем mock request
+        class MockRequest:
+            def __init__(self, json_data):
+                self._json_data = json_data
+                self.client = type('Client', (), {'host': 'manual_trigger'})()
+                self.url = "https://www.ezhqpy.ru:2500/payment/webhook"
+                self.headers = {"content-type": "application/json"}
+            
+            async def json(self):
+                return self._json_data
+            
+            async def body(self):
+                import json
+                return json.dumps(self._json_data).encode()
+        
+        mock_request = MockRequest(webhook_data)
+        
+        # Вызываем обработчик webhook
+        try:
+            result = await payment_webhook(mock_request)
+            print(f"[PayCore Webhook] Manual webhook processed successfully")
+            return {
+                "success": True,
+                "message": "Manual webhook triggered successfully",
+                "order_id": order_id,
+                "webhook_data": webhook_data,
+                "result": result
+            }
+        except Exception as e:
+            print(f"[PayCore Webhook] Error in manual webhook: {e}")
+            return {"error": str(e)}
+        
+    except Exception as e:
+        print(f"[PayCore Webhook] Error in manual trigger: {e}")
+        return {"error": str(e)}
+    finally:
+        db.close()
 
 
 @app.post("/payment/webhook")
