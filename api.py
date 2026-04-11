@@ -356,20 +356,55 @@ def add_client(inbound_id: int, username: str, tg_id: int, date: str):
     # Уникальный ID для каждого inbound
     client_id = f"{universal_subId}_{inbound_id}"
     
-    # Формируем данные клиента
-    client_data = {
-        "id": client_id,
-        "flow": "",
-        "email": f"{username}_{tg_id}_{inbound_id}",  # Уникальный email для каждого inbound
-        "limitIp": 0,
-        "totalGB": 0,
-        "expiryTime": expiry_timestamp,
-        "enable": True,
-        "tgId": tg_id,
-        "subId": universal_subId,  # Одинаковый subId для всех inbound'ов
-        "comment": "",
-        "reset": 0
-    }
+    # Проверяем протокол inbound для правильных полей
+    clients_data = get_clients()
+    if not clients_data.get('success'):
+        return {"error": "Failed to get current inbound data"}
+    
+    # Находим нужный inbound для определения протокола
+    target_inbound = None
+    for inbound in clients_data.get('obj', []):
+        if inbound.get('id') == inbound_id:
+            target_inbound = inbound
+            break
+    
+    protocol = target_inbound.get('protocol', 'vless') if target_inbound else 'vless'
+    
+    # Формируем данные клиента в зависимости от протокола
+    if protocol == 'trojan':
+        # Для trojan нужен password вместо id
+        import secrets
+        password = secrets.token_urlsafe(16)  # Генерируем случайный пароль
+        client_data = {
+            "password": password,
+            "flow": "",
+            "email": f"{username}_{tg_id}_{inbound_id}",  # Уникальный email для каждого inbound
+            "limitIp": 0,
+            "totalGB": 0,
+            "expiryTime": expiry_timestamp,
+            "enable": True,
+            "tgId": tg_id,
+            "subId": universal_subId,  # Одинаковый subId для всех inbound'ов
+            "comment": "",
+            "reset": 0
+        }
+        print(f"[API] Creating trojan client with password: {password}")
+    else:
+        # Для vless и других протоколов используем id
+        client_data = {
+            "id": client_id,
+            "flow": "",
+            "email": f"{username}_{tg_id}_{inbound_id}",  # Уникальный email для каждого inbound
+            "limitIp": 0,
+            "totalGB": 0,
+            "expiryTime": expiry_timestamp,
+            "enable": True,
+            "tgId": tg_id,
+            "subId": universal_subId,  # Одинаковый subId для всех inbound'ов
+            "comment": "",
+            "reset": 0
+        }
+        print(f"[API] Creating {protocol} client with id: {client_id}")
     
     # Получаем текущие данные inbound
     clients_data = get_clients()
