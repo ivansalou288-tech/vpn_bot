@@ -400,8 +400,19 @@ def add_client(inbound_id: int, username: str, tg_id: int, date: str):
     current_clients = settings_obj.get('clients', [])
     
     print(f"[API] Current clients in inbound {inbound_id}: {len(current_clients)}")
+    print(f"[API] Inbound {inbound_id} structure: {target_inbound.get('protocol', 'unknown')} - {target_inbound.get('remark', 'no remark')}")
+    
     for client in current_clients:
-        print(f"[API] - Client: tgId={client.get('tgId')}, email={client.get('email')}")
+        print(f"[API] - Client: tgId={client.get('tgId')}, email={client.get('email')}, id={client.get('id')}")
+    
+    # Special logging for inbound 4
+    if inbound_id == 4:
+        print(f"[API] Inbound 4 full structure:")
+        print(f"[API] - Protocol: {target_inbound.get('protocol')}")
+        print(f"[API] - Port: {target_inbound.get('port')}")
+        print(f"[API] - Settings type: {type(current_settings)}")
+        print(f"[API] - Settings keys: {list(settings_obj.keys()) if isinstance(settings_obj, dict) else 'not dict'}")
+        print(f"[API] - Required fields for inbound 4: {list(client.keys()) if current_clients else 'no clients'}")
     
     # Удаляем старых клиентов:
     # 1. С таким же tgId (для обновления подписки)
