@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Header
+from fastapi import FastAPI, HTTPException, Header, Request
 from pydantic import BaseModel
 from sqlalchemy import Column, Integer, String, Float, DateTime, create_engine
 from sqlalchemy.ext.declarative import declarative_base
@@ -81,13 +81,15 @@ def set_bot_instance(bot):
     bot_instance = bot
 
 @app.post("/payment/webhook")
-async def payment_webhook(data: PaymentWebhook):
+async def payment_webhook(data: PaymentWebhook, request: Request):
     """Endpoint для приёма уведомлений от PayCore - автоматически создаёт подписку"""
     print(f"[PayCore] ========== WEBHOOK RECEIVED ==========")
     print(f"[PayCore] Webhook received: {data}")
     print(f"[PayCore] order_id: {data.order_id}")
     print(f"[PayCore] amount: {data.amount}")
     print(f"[PayCore] status: completed (implicit)")
+    print(f"[PayCore] Request headers: {dict(data.__dict__)}")
+    print(f"[PayCore] Request IP: {request.client.host if hasattr(request, 'client') else 'unknown'}")
     db = SessionLocal()
     try:
         # Ищем платёж в БД по paycore_order_id
@@ -343,8 +345,17 @@ def get_payment_status(order_id: str):
     finally:
         db.close()
 
+@app.get("/payment/test")
+def test_webhook():
+    """Тестовый endpoint для проверки доступности webhook"""
+    return {"status": "webhook is accessible", "url": "/payment/webhook"}
+
 if __name__ == "__main__":
     import uvicorn
+    print("[PayCore] Starting payment API server...")
+    print(f"[PayCore] Webhook URL: https://www.ezhqpy.ru:2556/payment/webhook")
+    print(f"[PayCore] Test URL: https://www.ezhqpy.ru:2556/payment/test")
+    
     # Используем fullchain.pem вместо cert.pem для полной цепочки сертификатов
     uvicorn.run(app, host="0.0.0.0", port=2556, 
                 ssl_keyfile='/etc/letsencrypt/live/www.ezhqpy.ru/privkey.pem', 
