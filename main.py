@@ -602,10 +602,12 @@ async def add_client_command(message: types.Message):
         await message.answer(
             "👤 <b>Добавление клиента</b>\n\n"
             "Использование:\n"
-            "<code>/add_client TG_ID [месяцы]</code>\n\n"
+            "<code>/add_client TG_ID [месяцы]</code>\n"
+            "<code>/add_client TG_ID [дата]</code>\n\n"
             "Примеры:\n"
             "<code>/add_client 8489038592</code> - на 1 месяц\n"
-            "<code>/add_client 8489038592 3</code> - на 3 месяца\n\n"
+            "<code>/add_client 8489038592 3</code> - на 3 месяца\n"
+            "<code>/add_client 8489038592 31.12.2024</code> - до 31.12.2024\n\n"
             "Или просто отправьте TG ID пользователя сообщением.",
             parse_mode=ParseMode.HTML
         )
@@ -613,12 +615,35 @@ async def add_client_command(message: types.Message):
     
     tg_id = args[1]
     months = 1  # по умолчанию
+    end_date = None
     
     if len(args) >= 3:
-        try:
-            months = int(args[2])
-        except ValueError:
-            months = 1
+        param = args[2]
+        # Проверяем, это дата или количество месяцев
+        if '.' in param and len(param.split('.')) == 3:
+            # Это дата в формате ДД.ММ.ГГГГ
+            try:
+                day, month, year = param.split('.')
+                if len(day) == 1:
+                    day = '0' + day
+                if len(month) == 1:
+                    month = '0' + month
+                if len(year) == 2:
+                    year = '20' + year
+                
+                # Валидация даты
+                import datetime
+                datetime.datetime.strptime(f'{day}.{month}.{year}', '%d.%m.%Y')
+                end_date = f'{day}.{month}.{year}'
+            except ValueError:
+                await message.answer("❌ Неверный формат даты. Используйте ДД.ММ.ГГГГ (например: 31.12.2024)")
+                return
+        else:
+            # Это количество месяцев
+            try:
+                months = int(param)
+            except ValueError:
+                months = 1
     
     try:
         tg_id = int(tg_id)
@@ -632,13 +657,22 @@ async def add_client_command(message: types.Message):
     try:
         import requests
         
+        # Готовим данные для API
+        api_data = {
+            "tg_id": tg_id
+        }
+        
+        if end_date:
+            api_data["end_date"] = end_date
+            status_text = f"до {end_date}"
+        else:
+            api_data["months"] = months
+            status_text = f"на {months} месяц{'ев' if months > 1 and months < 5 else 'ев' if months > 4 else ''}"
+        
         # Вызываем API endpoint
         response = requests.post(
             "https://panel.ezhqpy.ru:2500/admin/add_client",
-            json={
-                "tg_id": tg_id,
-                "months": months
-            },
+            json=api_data,
             verify=False,
             timeout=30
         )
@@ -650,7 +684,7 @@ async def add_client_command(message: types.Message):
                 await status_message.edit_text(
                     f"✅ <b>Клиент успешно добавлен!</b>\n\n"
                     f"👤 Telegram ID: <code>{tg_id}</code>\n"
-                    f"📅 Период: <b>{months} месяц{'ев' if months > 1 and months < 5 else 'ев' if months > 4 else ''}</b>\n"
+                    f"📅 Период: <b>{status_text}</b>\n"
                     f"📝 Username: <code>{result.get('username', 'N/A')}</code>\n"
                     f"🔑 SubID: <code>{result.get('subId', 'N/A')}</code>\n"
                     f"📅 Дата окончания: <b>{result.get('end_date', 'N/A')}</b>",

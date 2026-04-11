@@ -482,6 +482,7 @@ async def admin_add_client_endpoint(request: dict):
     try:
         tg_id = request.get('tg_id')
         months = request.get('months', 1)
+        end_date = request.get('end_date')
         
         if not tg_id:
             return {
@@ -489,11 +490,15 @@ async def admin_add_client_endpoint(request: dict):
                 "error": "TG ID is required"
             }
         
-        print(f"[ADMIN API] Request to add client: TG ID={tg_id}, months={months}")
+        # Логирование параметров
+        if end_date:
+            print(f"[ADMIN API] Request to add client: TG ID={tg_id}, end_date={end_date}")
+        else:
+            print(f"[ADMIN API] Request to add client: TG ID={tg_id}, months={months}")
         
         # Вызываем админ функцию
         from api_extended import admin_add_client
-        result = admin_add_client(int(tg_id), int(months))
+        result = admin_add_client(int(tg_id), int(months), end_date)
         
         print(f"[ADMIN API] Result: {result}")
         
@@ -507,14 +512,18 @@ async def admin_add_client_endpoint(request: dict):
         }
 
 @app.get("/admin/add_client/{tg_id}")
-async def admin_add_client_get(tg_id: int, months: int = 1):
+async def admin_add_client_get(tg_id: int, months: int = 1, end_date: str = None):
     """Админ endpoint: добавить клиента по TG ID (GET запрос)"""
     try:
-        print(f"[ADMIN API] GET request to add client: TG ID={tg_id}, months={months}")
+        # Логирование параметров
+        if end_date:
+            print(f"[ADMIN API] GET request to add client: TG ID={tg_id}, end_date={end_date}")
+        else:
+            print(f"[ADMIN API] GET request to add client: TG ID={tg_id}, months={months}")
         
         # Вызываем админ функцию
         from api_extended import admin_add_client
-        result = admin_add_client(tg_id, months)
+        result = admin_add_client(tg_id, months, end_date)
         
         print(f"[ADMIN API] Result: {result}")
         

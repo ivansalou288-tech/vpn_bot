@@ -196,7 +196,7 @@ def getSubById(telegram_id):
     
     return {"error": f"No client found with tgId: {telegram_id}"}
 
-def admin_add_client(tg_id: int, months: int = 1):
+def admin_add_client(tg_id: int, months: int = 1, end_date: str = None):
     """Админ функция: добавляет клиента по TG ID на все 4 подключения"""
     import random
     import string
@@ -211,16 +211,26 @@ def admin_add_client(tg_id: int, months: int = 1):
         import uuid
         unique_subId = f"admin_{uuid.uuid4().hex[:8]}"
         
-        # Рассчитываем дату окончания
-        current_time = int(time.time() * 1000)
-        additional_time = months * 30 * 24 * 60 * 60 * 1000  # месяцев в миллисекундах
-        new_expiry = current_time + additional_time
-        end_date = datetime.fromtimestamp(new_expiry / 1000).strftime('%d.%m.%Y')
+        # Определяем дату окончания
+        if end_date:
+            # Используем переданную дату
+            try:
+                target_date = datetime.strptime(end_date, '%d.%m.%Y')
+                new_expiry = int(target_date.timestamp() * 1000)
+                calculated_end_date = end_date
+            except ValueError:
+                return {"error": f"Invalid date format: {end_date}. Use DD.MM.YYYY"}
+        else:
+            # Рассчитываем дату окончания по месяцам
+            current_time = int(time.time() * 1000)
+            additional_time = months * 30 * 24 * 60 * 60 * 1000  # месяцев в миллисекундах
+            new_expiry = current_time + additional_time
+            calculated_end_date = datetime.fromtimestamp(new_expiry / 1000).strftime('%d.%m.%Y')
         
         print(f"[ADMIN] Adding client for TG ID: {tg_id}")
         print(f"[ADMIN] Generated username: {random_username}")
         print(f"[ADMIN] Generated subId: {unique_subId}")
-        print(f"[ADMIN] End date: {end_date}")
+        print(f"[ADMIN] End date: {calculated_end_date}")
         
         # Проверяем, существует ли уже клиент
         existing_client = getSubById(tg_id)
@@ -257,7 +267,7 @@ def admin_add_client(tg_id: int, months: int = 1):
                                         break
             
             # Создаем нового клиента
-            result = add_client_to_all_inbounds(random_username, tg_id, end_date)
+            result = add_client_to_all_inbounds(random_username, tg_id, calculated_end_date)
         
         return {
             "success": True,
@@ -266,7 +276,7 @@ def admin_add_client(tg_id: int, months: int = 1):
             "username": random_username,
             "subId": unique_subId,
             "months": months,
-            "end_date": end_date,
+            "end_date": calculated_end_date,
             "result": result
         }
         
