@@ -407,6 +407,74 @@ def payment_status():
     finally:
         db.close()
 
+@app.post("/payment/trigger-webhook")
+async def trigger_webhook_test(order_id: str):
+    """Тестовый триггер webhook для ручного создания подписки"""
+    from api import add_client
+    
+    db = SessionLocal()
+    try:
+        # Ищем платеж
+        payment = db.query(Payment).filter(Payment.order_id == order_id).first()
+        if not payment:
+            return {"error": f"Payment {order_id} not found"}
+        
+        print(f"[PayCore] Manual webhook trigger for order: {order_id}")
+        
+        # Создаем подписку вручную
+        username = payment.username or f"user_{payment.user_id}"
+        end_time = datetime.now() + timedelta(days=payment.time_months * 31)
+        end_date_str = end_time.strftime("%d.%m.%Y")
+        
+        subscription_result = add_client(1, username, payment.user_id, end_date_str)
+        
+        # Обновляем статус платежа
+        payment.status = "completed"
+        payment.final_amount = payment.amount
+        payment.commission_amount = 0.0
+        db.commit()
+        
+        # Отправляем уведомление
+        if bot_instance:
+            try:
+                from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+                
+                keyboard = InlineKeyboardMarkup(
+                    inline_keyboard=[
+                        [InlineKeyboardButton(text="Использовать", url=f"https://www.ezhqpy.ru/rUGq18rXII/{subscription_result.get('subId', 'unknown')}")]
+                    ]
+                )
+                
+                message = (
+                    f"<tg-emoji emoji-id='5416081784641168838'>✅</tg-emoji> <b>Оплата успешно завершена!</b>\n\n"
+                    f"<tg-emoji emoji-id='5440621591387980068'>⏰</tg-emoji> Период: {payment.time_months} мес.\n"
+                    f"<tg-emoji emoji-id='5417924076503062111'>💰</tg-emoji> Оплачено: {payment.amount}₽\n"
+                    f"<tg-emoji emoji-id='5440621591387980068'>📅</tg-emoji> Действует до: {end_date_str}\n\n"
+                    f"Подписка активирована! 🎉"
+                )
+                
+                await bot_instance.send_message(
+                    chat_id=payment.user_id,
+                    text=message,
+                    reply_markup=keyboard
+                )
+                print(f"[PayCore] Notification sent to user {payment.user_id}")
+            except Exception as e:
+                print(f"[PayCore] Error sending notification: {e}")
+        
+        return {
+            "success": True,
+            "message": "Webhook triggered manually",
+            "subscription_result": subscription_result,
+            "payment_id": order_id
+        }
+        
+    except Exception as e:
+        print(f"[PayCore] Error in manual webhook: {e}")
+        return {"error": str(e)}
+    finally:
+        db.close()
+
 if __name__ == "__main__":
     import uvicorn
     print("[PayCore] Starting payment API server...")
