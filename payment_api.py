@@ -23,7 +23,7 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 # Получаем токен из переменной окружения или используем дефолтный
 PAYCORE_API_KEY ='paycore__kzCrJ9vpN0pF7dkM%lc2D5V7/rKfbbV^ftafi%PXhH^='
 PAYCORE_API_URL = "https://pay.pay-core.ru/api/init"
-WEBHOOK_URL = 'https://www.ezhqpy.ru:2500/payment/webhook'
+WEBHOOK_URL = 'http://panel.ezhqpy.ru:8080/payment/webhook'
 BOT_TOKEN = "8358697144:AAGppsqXjG9S08nGLUpghL-jUfTz9H4gj58"
 OPERATOR_CHAT_ID = [1240656726, 1401086794]
 
