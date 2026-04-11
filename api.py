@@ -349,20 +349,24 @@ def add_client(inbound_id: int, username: str, tg_id: int, date: str):
     if isinstance(expiry_timestamp, str):  # Если вернулась ошибка
         return {"error": expiry_timestamp}
     
-    # Генерируем новый UUID для клиента
-    client_id = username + "_" + str(tg_id)
+    # Генерируем одинаковый subId для всех inbound'ов
+    import uuid
+    universal_subId = f"{username}_{tg_id}"
+    
+    # Уникальный ID для каждого inbound
+    client_id = f"{universal_subId}_{inbound_id}"
     
     # Формируем данные клиента
     client_data = {
         "id": client_id,
         "flow": "",
-        "email": f"{username}_{tg_id}_{inbound_id}",  # Уникальный email с доменом
+        "email": f"{username}_{tg_id}_{inbound_id}",  # Уникальный email для каждого inbound
         "limitIp": 0,
         "totalGB": 0,
         "expiryTime": expiry_timestamp,
         "enable": True,
         "tgId": tg_id,
-        "subId": f"{client_id[:8]}",  # Генерируем subId
+        "subId": universal_subId,  # Одинаковый subId для всех inbound'ов
         "comment": "",
         "reset": 0
     }
@@ -392,22 +396,32 @@ def add_client(inbound_id: int, username: str, tg_id: int, date: str):
     else:
         settings_obj = current_settings
     
-    # Создаем новые settings только с новым клиентом
+    # Получаем текущих клиентов
+    current_clients = settings_obj.get('clients', [])
+    
+    # Удаляем старого клиента с таким же tgId, если он существует
+    current_clients = [client for client in current_clients if str(client.get('tgId')) != str(tg_id)]
+    
+    # Добавляем нового клиента
+    current_clients.append(client_data)
+    
+    # Создаем новые settings со всеми клиентами
     new_settings = {
-        "clients": [client_data],  # Только новый клиент
-        "decryption": "none",
-        "encryption": "none"
+        "clients": current_clients,  # Все клиенты включая нового
+        "decryption": settings_obj.get('decryption', 'none'),
+        "encryption": settings_obj.get('encryption', 'none')
     }
     
-    print(f"Creating new client only: {client_data}")
+    print(f"[WARNING]Adding client to inbound {inbound_id}: {client_data}")
+    print(f"[WARNING]Total clients in inbound {inbound_id}: {len(current_clients)}")
     
-    # Подготавливаем данные для API - только с новым клиентом
+    # Подготавливаем данные для API
     settings_data = {
         "id": inbound_id,
         "settings": json.dumps(new_settings)
     }
     
-    print(f"Settings data being sent: {settings_data}")
+    print(f"[WARNING]Settings data being sent: {settings_data}")
     
     admin_login = {
         "username": admn_username,
@@ -421,8 +435,8 @@ def add_client(inbound_id: int, username: str, tg_id: int, date: str):
     if login_response.json().get('success'):
         # Используем только addClient endpoint с правильными данными
         response = session.post(f"{BASE_URL}/panel/api/inbounds/addClient", json=settings_data, verify=False)
-        print(f"Status Code: {response.status_code}")
-        print(f"Response: {response.text}")
+        print(f"[WARNING]Status Code: {response.status_code}")
+        print(f"[WARNING]Response: {response.text}")
         
         if response.status_code == 200:
             return response.json()
