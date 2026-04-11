@@ -5,7 +5,7 @@ import random
 import datetime
 import time
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-BASE_URL = 'https://ezh-dev.ru:45618/NDytSmlXITQ2e4MMnc'
+BASE_URL = 'https://www.ezhqpy.ru:45618/NDytSmlXITQ2e4MMnc'
 
 import secret
 
@@ -78,7 +78,7 @@ def add_inbrouds(name: str, client_name: str, client_id: str):
     if login_response.json().get('success'):
         # Use the authenticated session to add inbound
             print(data)
-            response = session.post("https://ezh-dev.ru:45618/NDytSmlXITQ2e4MMnc/panel/api/inbounds/add", json=data)
+            response = session.post("https://www.ezhqpy.ru:45618/NDytSmlXITQ2e4MMnc/panel/api/inbounds/add", json=data)
             
             print(f"Status Code: {response.status_code}")
             print(f"Response Text: {response.text}")

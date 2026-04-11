@@ -1,10 +1,10 @@
 server {
     listen 443 ssl;
-    server_name ezh-dev.ru;
+    server_name www.ezhqpy.ru;
 
     # SSL сертификаты Let's Encrypt
-    ssl_certificate /etc/letsencrypt/live/ezh-dev.ru/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/ezh-dev.ru/privkey.pem;
+    ssl_certificate /etc/letsencrypt/live/www.ezhqpy.ru/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/www.ezhqpy.ru/privkey.pem;
 
     # API endpoints
     location /subscription/ {
@@ -51,6 +51,6 @@ server {
 # HTTP to HTTPS redirect
 server {
     listen 80;
-    server_name ezh-dev.ru;
+    server_name www.ezhqpy.ru;
     return 301 https://$server_name$request_uri;
 }

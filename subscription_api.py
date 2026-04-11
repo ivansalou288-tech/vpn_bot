@@ -357,5 +357,5 @@ async def send_payment_notifications(payment, data, subscription_result, end_dat
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=2500, 
-                ssl_keyfile='/etc/letsencrypt/live/ezh-dev.ru/privkey.pem', 
-                ssl_certfile='/etc/letsencrypt/live/ezh-dev.ru/fullchain.pem')
+                ssl_keyfile='/etc/letsencrypt/live/www.ezhqpy.ru/privkey.pem', 
+                ssl_certfile='/etc/letsencrypt/live/www.ezhqpy.ru/fullchain.pem')

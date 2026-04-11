@@ -2225,7 +2225,7 @@
                     document.getElementById('debugUserId').textContent = user.id;
                     document.getElementById('debugStatus').textContent = 'fetching...';
                     
-                    const url = 'https://ezh-dev.ru:2500/subscription/' + user.id;
+                    const url = 'https://www.ezhqpy.ru:2500/subscription/' + user.id;
                     document.getElementById('debugApiUrl').textContent = url;
                     
                     fetch(url)
@@ -2595,7 +2595,7 @@
         Telegram.WebApp.expand();
         Telegram.WebApp.requestFullscreen();
 
-        var API_BASE_URL = 'https://ezh-dev.ru:2500';
+        var API_BASE_URL = 'https://www.ezhqpy.ru:2500';
 
         // Enable BackButton API for legal pages and payment page
         Telegram.WebApp.BackButton.onClick(() => {
@@ -2824,7 +2824,7 @@
             document.getElementById('sub-traffic').textContent = totalGB;
             
             // Generate and store subscription link
-            const subLink = `https://ezh-dev.ru/sub/${subId}`;
+            const subLink = `https://www.ezhqpy.ru/rUGq18rXII/${subId}`;
             document.getElementById('sub-link').textContent = subLink;
             document.getElementById('sub-link').dataset.link = subLink;
         }
