@@ -399,11 +399,26 @@ def add_client(inbound_id: int, username: str, tg_id: int, date: str):
     # Получаем текущих клиентов
     current_clients = settings_obj.get('clients', [])
     
-    # Удаляем старого клиента с таким же tgId, если он существует
-    current_clients = [client for client in current_clients if str(client.get('tgId')) != str(tg_id)]
+    # Удаляем старых клиентов:
+    # 1. С таким же tgId (для обновления подписки)
+    # 2. С таким же email (для избежания дублирования)
+    updated_clients = []
+    for client in current_clients:
+        client_tgId = str(client.get('tgId', ''))
+        client_email = str(client.get('email', ''))
+        new_email = str(client_data.get('email', ''))
+        
+        # Удаляем если tgId совпадает ИЛИ email совпадает
+        if client_tgId != str(tg_id) and client_email != new_email:
+            updated_clients.append(client)
+        else:
+            print(f"[API] Removing existing client: tgId={client_tgId}, email={client_email}")
     
     # Добавляем нового клиента
-    current_clients.append(client_data)
+    updated_clients.append(client_data)
+    
+    # Заменяем текущих клиентов на обновленный список
+    current_clients = updated_clients
     
     # Создаем новые settings со всеми клиентами
     new_settings = {
