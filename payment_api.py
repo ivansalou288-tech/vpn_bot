@@ -94,12 +94,14 @@ def set_bot_instance(bot):
 async def payment_webhook(data: PaymentWebhook, request: Request):
     """Endpoint для приёма уведомлений от PayCore - автоматически создаёт подписку"""
     print(f"[PayCore] ========== WEBHOOK RECEIVED ==========")
+    print(f"[PayCore] Timestamp: {datetime.now()}")
+    print(f"[PayCore] Request IP: {request.client.host if hasattr(request, 'client') else 'unknown'}")
+    print(f"[PayCore] Request headers: {dict(request.headers)}")
     print(f"[PayCore] Webhook received: {data}")
     print(f"[PayCore] order_id: {data.order_id}")
     print(f"[PayCore] amount: {data.amount}")
     print(f"[PayCore] status: completed (implicit)")
-    print(f"[PayCore] Request headers: {dict(data.__dict__)}")
-    print(f"[PayCore] Request IP: {request.client.host if hasattr(request, 'client') else 'unknown'}")
+    print(f"[PayCore] Raw data: {await request.body()}")
     db = SessionLocal()
     try:
         # Ищем платёж в БД по paycore_order_id
@@ -374,6 +376,36 @@ def test_webhook_options():
 def root():
     """Корневой endpoint для проверки доступности"""
     return {"status": "VPN Bot Payment API is running", "version": "1.0"}
+
+@app.get("/payment/webhook")
+def webhook_get():
+    """GET endpoint для проверки доступности webhook"""
+    return {"status": "Webhook endpoint is accessible", "method": "GET", "note": "PayCore should use POST method"}
+
+@app.get("/payment/status")
+def payment_status():
+    """Проверить статус сервера и последних платежей"""
+    db = SessionLocal()
+    try:
+        # Получаем последние 5 платежей
+        recent_payments = db.query(Payment).order_by(Payment.created_at.desc()).limit(5).all()
+        payments_list = []
+        for payment in recent_payments:
+            payments_list.append({
+                "order_id": payment.order_id,
+                "paycore_order_id": payment.paycore_order_id,
+                "amount": payment.amount,
+                "status": payment.status,
+                "created_at": payment.created_at.isoformat() if payment.created_at else None
+            })
+        
+        return {
+            "status": "Server is running",
+            "webhook_url": "https://www.ezhqpy.ru:2500/payment/webhook",
+            "recent_payments": payments_list
+        }
+    finally:
+        db.close()
 
 if __name__ == "__main__":
     import uvicorn
