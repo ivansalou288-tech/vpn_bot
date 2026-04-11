@@ -483,5 +483,5 @@ if __name__ == "__main__":
     
     # Запускаем HTTPS сервер с SSL
     uvicorn.run(app, host="0.0.0.0", port=2500, 
-                ssl_keyfile='/etc/letsencrypt/live/www.ezhqpy.ru/privkey.pem', 
-                ssl_certfile='/etc/letsencrypt/live/www.ezhqpy.ru/fullchain.pem')
+                ssl_keyfile='/etc/letsencrypt/live/panel.ezhqpy.ru/privkey.pem', 
+                ssl_certfile='/etc/letsencrypt/live/panel.ezhqpy.ru/fullchain.pem')
