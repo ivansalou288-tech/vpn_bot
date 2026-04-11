@@ -28,16 +28,48 @@ def get_clients():
         "password": admn_pass
     }
     
+    print(f"[DEBUG] Attempting login to: {BASE_URL}/login")
+    print(f"[DEBUG] Login data: {admin_login}")
+    
     # Create session and login
     session = requests.Session()
-    login_response = session.post(f"{BASE_URL}/login", json=admin_login, verify=False)
     
-    if login_response.json().get('success'):
-        # Use the authenticated session to get clients
-        response = session.get(f"{BASE_URL}/panel/api/inbounds/list", verify=False)
-        return response.json()
-    else:
-        return {"error": "Login failed"}
+    try:
+        login_response = session.post(f"{BASE_URL}/login", json=admin_login, verify=False, timeout=10)
+        
+        print(f"[DEBUG] Login response status: {login_response.status_code}")
+        print(f"[DEBUG] Login response: {login_response.text[:500]}")  # Ограничиваем вывод
+        
+        if login_response.status_code != 200:
+            print(f"[DEBUG] HTTP error on login: {login_response.status_code}")
+            return {"error": f"HTTP {login_response.status_code} on login"}
+            
+        login_result = login_response.json()
+        if login_result.get('success'):
+            # Use the authenticated session to get clients
+            api_url = f"{BASE_URL}/panel/api/inbounds/list"
+            print(f"[DEBUG] Getting clients from: {api_url}")
+            
+            response = session.get(api_url, verify=False, timeout=10)
+            
+            print(f"[DEBUG] Clients response status: {response.status_code}")
+            print(f"[DEBUG] Clients response: {response.text[:500]}")  # Ограничиваем вывод
+            
+            if response.status_code != 200:
+                print(f"[DEBUG] HTTP error on get clients: {response.status_code}")
+                return {"error": f"HTTP {response.status_code} on get clients"}
+                
+            return response.json()
+        else:
+            print(f"[DEBUG] Login failed for user: {admn_username}")
+            return {"error": "Login failed"}
+            
+    except requests.exceptions.RequestException as e:
+        print(f"[DEBUG] Request exception: {e}")
+        return {"error": f"Request failed: {str(e)}"}
+    except Exception as e:
+        print(f"[DEBUG] Unexpected error: {e}")
+        return {"error": f"Unexpected error: {str(e)}"}
 
 
 def add_inbrouds(name: str, client_name: str, client_id: str):
