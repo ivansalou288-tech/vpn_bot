@@ -265,9 +265,12 @@ def create_paycore_payment(amount: float, description: str, user_id: int, userna
         }
     }
     
+    print(f"[PayCore] ========== CREATING PAYMENT ==========")
+    print(f"[PayCore] Webhook URL (returnLink): {WEBHOOK_URL}")
     print(f"[PayCore] Request URL: {PAYCORE_API_URL}")
     print(f"[PayCore] Request headers: {headers}")
     print(f"[PayCore] Request data: {data}")
+    print(f"[PayCore] Webhook accessibility check: https://www.ezhqpy.ru:2500/payment/webhook")
     
     try:
         response = requests.post(PAYCORE_API_URL, json=data, headers=headers, timeout=30)

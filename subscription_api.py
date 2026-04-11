@@ -185,14 +185,53 @@ async def root():
         }
     }
 
+@app.get("/payment/webhook")
+def webhook_get():
+    """GET endpoint для проверки доступности webhook от PayCore"""
+    print(f"[PayCore Webhook] ========== WEBHOOK GET REQUEST ==========")
+    print(f"[PayCore Webhook] Timestamp: {datetime.now()}")
+    print(f"[PayCore Webhook] Webhook is accessible via GET request")
+    print(f"[PayCore Webhook] PayCore should use POST method for actual notifications")
+    return {
+        "status": "Webhook endpoint is accessible",
+        "method": "GET",
+        "note": "PayCore should use POST method for payment notifications",
+        "webhook_url": "https://www.ezhqpy.ru:2500/payment/webhook",
+        "timestamp": datetime.now().isoformat()
+    }
+
+@app.post("/payment/test-webhook")
+async def test_webhook_endpoint():
+    """Тестовый POST endpoint для проверки webhook функциональности"""
+    print(f"[PayCore Webhook] ========== TEST WEBHOOK POST ==========")
+    print(f"[PayCore Webhook] Timestamp: {datetime.now()}")
+    print(f"[PayCore Webhook] Test POST request received successfully")
+    return {
+        "status": "Test webhook POST successful",
+        "message": "Webhook endpoint is working correctly",
+        "timestamp": datetime.now().isoformat()
+    }
+
 
 @app.post("/payment/webhook")
 async def payment_webhook(request: Request):
     """Endpoint для приёма уведомлений от PayCore - автоматически создаёт подписку"""
+    print(f"[PayCore Webhook] ========== WEBHOOK REQUEST RECEIVED ==========")
+    print(f"[PayCore Webhook] Timestamp: {datetime.now()}")
+    print(f"[PayCore Webhook] Request IP: {request.client.host if hasattr(request, 'client') else 'unknown'}")
+    print(f"[PayCore Webhook] Request headers: {dict(request.headers)}")
+    print(f"[PayCore Webhook] Request method: {request.method}")
+    print(f"[PayCore Webhook] Request URL: {request.url}")
+    
     try:
+        # Получаем raw body для логирования
+        body = await request.body()
+        print(f"[PayCore Webhook] Raw body: {body.decode()[:500]}")
+        
         data = await request.json()
-        print(f"[PayCore Webhook] ========== WEBHOOK RECEIVED ==========")
+        print(f"[PayCore Webhook] ========== PARSED WEBHOOK DATA ==========")
         print(f"[PayCore Webhook] Data: {data}")
+        print(f"[PayCore Webhook] Webhook URL validation: https://www.ezhqpy.ru:2500/payment/webhook")
         
         order_id = data.get("order_id")
         amount = data.get("amount")
