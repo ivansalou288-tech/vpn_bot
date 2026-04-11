@@ -462,7 +462,7 @@ def add_client(inbound_id: int, username: str, tg_id: int, date: str):
         
         # Удаляем если:
         # 1. tgId совпадает (для обновления подписки)
-        # 2. email совпадает (для избежания дублирования)
+        # 2. email совпадает ТОЧНО (для избежания дублирования)
         # 3. Это тестовый клиент (email начинается с 'first' или tgId пустой/0)
         should_remove = (
             client_tgId == str(tg_id) or 
@@ -470,6 +470,10 @@ def add_client(inbound_id: int, username: str, tg_id: int, date: str):
             client_email.startswith('first') or
             client_tgId in ['', '0']
         )
+        
+        print(f"[API] Checking client: tgId={client_tgId}, email={client_email}")
+        print(f"[API] Target tgId: {tg_id}, new_email: {new_email}")
+        print(f"[API] Should remove: {should_remove}")
         
         if should_remove:
             print(f"[API] Removing existing client: tgId={client_tgId}, email={client_email}")

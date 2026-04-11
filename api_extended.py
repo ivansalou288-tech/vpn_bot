@@ -230,6 +230,32 @@ def admin_add_client(tg_id: int, months: int = 1):
             result = renew_subscription_all_inbounds(tg_id, months)
         else:
             print(f"[ADMIN] Creating new client...")
+            # Проверяем, есть ли клиенты с другими TG ID на этих inbound'ах
+            # Если есть, используем тот же subId для консистентности
+            clients_data = get_clients()
+            if clients_data.get('success'):
+                inbounds = clients_data.get('obj', [])
+                for inbound in inbounds:
+                    if 'settings' in inbound:
+                        settings = inbound['settings']
+                        if isinstance(settings, str):
+                            try:
+                                settings = json.loads(settings)
+                            except json.JSONDecodeError:
+                                continue
+                        
+                        if 'clients' in settings:
+                            clients = settings['clients']
+                            for client in clients:
+                                client_tgId = client.get('tgId')
+                                if str(client_tgId) == str(tg_id):
+                                    # Нашли клиента с таким же TG ID, используем его subId
+                                    existing_subId = client.get('subId')
+                                    if existing_subId:
+                                        unique_subId = existing_subId
+                                        print(f"[ADMIN] Found existing client with same TG ID, using subId: {existing_subId}")
+                                        break
+            
             # Создаем нового клиента
             result = add_client_to_all_inbounds(random_username, tg_id, end_date)
         
