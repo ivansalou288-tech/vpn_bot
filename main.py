@@ -5,7 +5,7 @@ import os
 import re
 import sys
 import time
-from aiogram.types import LabeledPrice, Message, PreCheckoutQuery
+from aiogram.types import LabeledPrice, Message, PreCheckoutQuery, CopyTextButton
 from botlogic import payment_keyboard 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
@@ -785,7 +785,7 @@ async def subscription_callback(callback: types.CallbackQuery):
         if is_enabled:
             subscription_keyboard = InlineKeyboardMarkup(
                 inline_keyboard=[
-                    [InlineKeyboardButton(text="Использовать", copy_text=CopyTextButton(text=f"https://www.ezhqpy.ru/uMp0MVDJNm/{sub_id}"), style="primary", icon_custom_emoji_id='5271604874419647061')],
+                    [CopyTextButton(text=f"https://www.ezhqpy.ru/uMp0MVDJNm/{sub_id}", style="primary", icon_custom_emoji_id='5271604874419647061')],
                     [InlineKeyboardButton(text="Продлить подписку", callback_data="renew_subscription", style="primary", icon_custom_emoji_id='5231012545799666522')],
                     [instruction_btn],
                     [InlineKeyboardButton(text="Назад", callback_data="main_menu", style="danger")]
