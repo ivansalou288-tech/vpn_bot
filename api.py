@@ -519,20 +519,14 @@ def add_client(inbound_id: int, username: str, tg_id: int, date: str):
     login_response = session.post(f"{BASE_URL}/login", json=admin_login, verify=False)
     
     if login_response.json().get('success'):
-        # Сначала удаляем существующих клиентов через API
+        # Сначала удаляем ВСЕ существующих клиентов через API
         delete_errors = []
         for client in current_clients:
             client_tgId = str(client.get('tgId', ''))
             client_email = str(client.get('email', ''))
-            new_email = str(client_data.get('email', ''))
             
-            # Удаляем клиента если он совпадает по условиям
-            should_delete = (
-                client_tgId == str(tg_id) or 
-                client_email == new_email or
-                client_email.startswith('first') or
-                client_tgId in ['', '0']
-            )
+            # Удаляем ВСЕ клиентов для чистого inbound'а
+            should_delete = True  # Удаляем всех клиентов
             
             if should_delete:
                 # Для delClient API нужно использовать ID клиента из clientStats
@@ -551,7 +545,7 @@ def add_client(inbound_id: int, username: str, tg_id: int, date: str):
                         "client_id": client_id_to_delete
                     }
                     
-                    print(f"[API] Deleting client: email={client.get('email')}, client_id={client_id_to_delete} from inbound {inbound_id}")
+                    print(f"[API] Deleting ALL clients: email={client.get('email')}, client_id={client_id_to_delete} from inbound {inbound_id}")
                     delete_response = session.post(f"{BASE_URL}/panel/api/inbounds/delClient", json=delete_data, verify=False)
                     
                     if delete_response.status_code != 200:
@@ -562,7 +556,7 @@ def add_client(inbound_id: int, username: str, tg_id: int, date: str):
                     print(f"[API] Client ID not found for email: {client.get('email')}")
                     delete_errors.append(f"Client ID not found for email: {client.get('email')}")
         
-        # Теперь добавляем нового клиента
+        # Теперь добавляем нового клиента в очищенный inbound
         response = session.post(f"{BASE_URL}/panel/api/inbounds/addClient", json=settings_data, verify=False)
         print(f"[WARNING]Status Code: {response.status_code}")
         print(f"[WARNING]Response: {response.text}")
