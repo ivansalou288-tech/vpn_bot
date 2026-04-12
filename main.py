@@ -905,7 +905,8 @@ async def subscription_callback(callback: types.CallbackQuery):
         if is_enabled:
             subscription_keyboard = InlineKeyboardMarkup(
                 inline_keyboard=[
-                    [InlineKeyboardButton(text="Использовать", url=f"https://www.ezhqpy.ru/uMp0MVDJNm/{sub_id}", callback_data=f"use_sub_{sub_id}", style="primary", icon_custom_emoji_id='5271604874419647061')],
+                    [InlineKeyboardButton(text="Использовать (v2RayTun)", url=f"v2raytun://import/https://www.ezhqpy.ru/uMp0MVDJNm/{sub_id}", callback_data=f"use_sub_{sub_id}", style="primary", icon_custom_emoji_id='5271604874419647061')],
+                    [InlineKeyboardButton(text="Использовать (Hupp)", url=f"hupp://add/https://www.ezhqpy.ru/uMp0MVDJNm/{sub_id}", callback_data=f"use_sub_{sub_id}", style="primary", icon_custom_emoji_id='5271604874419647061')],
                     [InlineKeyboardButton(text="Продлить подписку", callback_data="renew_subscription", style="primary", icon_custom_emoji_id='5231012545799666522')],
                     [instruction_btn],
                     [InlineKeyboardButton(text="Назад", callback_data="main_menu", style="danger")]
