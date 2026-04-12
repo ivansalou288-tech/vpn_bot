@@ -537,7 +537,7 @@ admin_btn = InlineKeyboardButton(text="⚙️ Админ панель", callback
 # Создаем inline клавиатуру (кнопки в разных строках)
 keyboard = InlineKeyboardMarkup(
     inline_keyboard=[
-        [instruction_btn],      # Четвертая строка
+        # [instruction_btn],      # Четвертая строка
         [subscription_btn],      # Первая строка                
         [contact_btn],          # Вторая строка  
         [info_btn],             # Третья строка
