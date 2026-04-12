@@ -322,7 +322,7 @@ def convert_timestamp_to_human_readable(timestamp_ms):
         # Создаем datetime объект
         dt = datetime.datetime.fromtimestamp(timestamp_s)
         # Форматируем в читаемый вид
-        return dt.strftime("%Y-%m-%d %H:%M:%S")
+        return dt.strftime("%d.%m.%Y %H:%M:%S")
     except (ValueError, OSError) as e:
         return f"Ошибка конвертации: {e}"
 
