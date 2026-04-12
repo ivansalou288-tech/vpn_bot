@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import api
 import sys
 import os
@@ -326,7 +326,7 @@ async def payment_webhook(request: Request):
             payment.final_amount = final_amount or amount
             payment.commission_amount = commission_amount
             payment.status = "completed"
-            payment.updated_at = datetime.utcnow()
+            payment.updated_at = datetime.now(timezone.utc)
             db.commit()
             print(f"[PayCore Webhook] Payment updated: {order_id} -> status=completed")
             

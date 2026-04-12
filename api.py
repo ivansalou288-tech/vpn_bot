@@ -4,6 +4,7 @@ import json
 import random
 import datetime
 import time
+from urllib.parse import quote
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 BASE_URL = 'https://www.ezhqpy.ru/fHvt2YpAP8'
 
@@ -171,7 +172,11 @@ def dell_client(inboundId: int, telegramId: int):
     
     if login_response.json().get('success'):
         # Use the authenticated session to delete client
-        response = session.post(f"{BASE_URL}/panel/api/inbounds/{inboundId}/delClientByEmail/{email}", verify=False)
+        enc = quote(str(email), safe="")
+        response = session.post(
+            f"{BASE_URL}/panel/api/inbounds/{inboundId}/delClientByEmail/{enc}",
+            verify=False,
+        )
         result = response.json()
         if result.get('success'):
             return result
@@ -260,58 +265,199 @@ def getSubById(telegram_id):
     return {"error": f"No client found with tgId: {telegram_id}"}
 
 
-def renew_subscription(tg_id: int, additional_months: int):
-    """Продлевает подписку на указанное количество месяцев"""
+def panel_session():
+    session = requests.Session()
+    session.verify = False
+    login_response = session.post(
+        f"{BASE_URL}/login",
+        json={"username": admn_username, "password": admn_pass},
+        verify=False,
+    )
+    if login_response.status_code != 200:
+        return None, "login http error"
     try:
-        # Получаем текущую информацию о клиенте
-        client_info = getSubById(tg_id)
-        
-        if not client_info.get('success'):
-            return {"error": "Client not found", "details": client_info}
-        
-        current_expiry = client_info['client_info']['expiryTime']
-        current_time = int(time.time() * 1000)
-        
-        # Если текущее время истекло, начинаем от текущего времени
-        if current_expiry == 0:
-            new_expiry = current_time
-        else:
-            new_expiry = current_expiry
-        
-        # Добавляем указанное количество месяцев
-        import datetime
-        additional_time = additional_months * 30 * 24 * 60 * 60 * 1000  # Приблизительно месяцев в миллисекундах
-        new_expiry += additional_time
-        
-        # Используем inbound_id из getSubById
-        inbound_id = client_info.get('inbound_id')
-        
-        if not inbound_id:
-            return {"error": "Inbound not found"}
-        
-        # Сначала удаляем ВСЕХ клиентов со всех inbound'ов
-        # Теперь добавляем новых клиентов на все inbound'ы
-        add_results = []
-        for i in range(1,5):
-            # Создаем нового клиента с обновленным временем и новым email
-            import secrets
-            # Генерируем новый случайный username для каждого inbound
-            new_username = secrets.token_urlsafe(8)  # 8 символов случайной строки
-            new_date = datetime.datetime.fromtimestamp(new_expiry / 1000).strftime('%d.%m.%Y')
-            
-            add_result = add_client(i, new_username, tg_id, new_date)
-            add_results.append(add_result)
-                
-        return {
-            "success": True,
-            "message": f"Subscription renewed for {additional_months} months across all inbounds",
-            "old_expiry": current_expiry,
-            "new_expiry": new_expiry,
-            "add_results": add_results
-        }
-        
-    except Exception as e:
-        return {"error": str(e)}
+        body = login_response.json()
+    except json.JSONDecodeError:
+        return None, "login invalid json"
+    if not body.get("success"):
+        return None, "login failed"
+    return session, None
+
+
+def parse_inbound_settings(inbound):
+    raw = inbound.get("settings", "{}")
+    if isinstance(raw, str):
+        try:
+            return json.loads(raw)
+        except json.JSONDecodeError:
+            return None
+    return raw if isinstance(raw, dict) else None
+
+
+def _client_route_id(protocol, client):
+    if protocol == "trojan":
+        v = client.get("password")
+    elif protocol == "shadowsocks":
+        v = client.get("email")
+    else:
+        v = client.get("id")
+    if v is None or v == "":
+        return None
+    return str(v)
+
+
+def find_clients_for_tg_on_inbound(settings_obj, tg_id, inbound_id):
+    matches = []
+    suffix = f"_{tg_id}_{inbound_id}"
+    for c in settings_obj.get("clients") or []:
+        matched = False
+        raw_tg = c.get("tgId")
+        if raw_tg is not None and raw_tg != "" and raw_tg != 0:
+            try:
+                if int(raw_tg) == int(tg_id):
+                    matched = True
+            except (TypeError, ValueError):
+                pass
+        if not matched:
+            em = str(c.get("email", ""))
+            if em.endswith(suffix):
+                matched = True
+        if matched:
+            matches.append(c)
+    return matches
+
+
+def panel_del_client_by_email(session, inbound_id, email):
+    if not email:
+        return {"success": False, "msg": "empty email"}
+    enc = quote(str(email), safe="")
+    r = session.post(
+        f"{BASE_URL}/panel/api/inbounds/{inbound_id}/delClientByEmail/{enc}",
+        verify=False,
+    )
+    if r.status_code != 200:
+        return {"success": False, "error": f"HTTP {r.status_code}", "msg": r.text}
+    try:
+        return r.json()
+    except json.JSONDecodeError:
+        return {"success": True, "msg": r.text}
+
+
+def panel_add_inbound_client(session, inbound_id, client_dict, protocol):
+    fragment = {"clients": [client_dict]}
+    if protocol == "vless":
+        fragment.setdefault("decryption", "none")
+        fragment.setdefault("encryption", "none")
+    elif protocol == "trojan":
+        fragment.setdefault("fallbacks", [])
+    body = {"id": inbound_id, "settings": json.dumps(fragment)}
+    r = session.post(f"{BASE_URL}/panel/api/inbounds/addClient", json=body, verify=False)
+    if r.status_code != 200:
+        return {"success": False, "error": f"HTTP {r.status_code}", "msg": r.text}
+    try:
+        return r.json()
+    except json.JSONDecodeError:
+        return {"success": False, "msg": r.text}
+
+
+def panel_update_inbound_client(session, inbound_id, protocol, route_client_id, settings_obj, updated_client):
+    patch = {k: v for k, v in settings_obj.items() if k != "clients"}
+    patch["clients"] = [updated_client]
+    body = {"id": inbound_id, "settings": json.dumps(patch)}
+    enc = quote(str(route_client_id), safe="")
+    url = f"{BASE_URL}/panel/api/inbounds/updateClient/{enc}"
+    r = session.post(url, json=body, verify=False)
+    if r.status_code != 200:
+        return {"success": False, "error": f"HTTP {r.status_code}", "msg": r.text}
+    try:
+        return r.json()
+    except json.JSONDecodeError:
+        return {"success": False, "msg": r.text}
+
+
+def renew_subscription_on_panel(tg_id: int, additional_months: int, inbound_ids=None):
+    """
+    Продление по API 3x-ui: для каждого inbound находим клиента по tgId и шлём
+    POST .../updateClient/{clientId} с новым expiryTime (UUID/subId не меняются).
+    """
+    if inbound_ids is None:
+        inbound_ids = {1, 2, 3, 4}
+
+    client_info = getSubById(tg_id)
+    if not client_info.get("success"):
+        return {"error": "Client not found", "details": client_info}
+
+    current_expiry = client_info["client_info"]["expiryTime"]
+    current_time = int(time.time() * 1000)
+    new_expiry = current_time if current_expiry == 0 else current_expiry
+    additional_ms = additional_months * 30 * 24 * 60 * 60 * 1000
+    new_expiry += additional_ms
+
+    clients_data = get_clients()
+    if not clients_data.get("success"):
+        return {"error": "Failed to get inbounds", "details": clients_data}
+
+    session, err = panel_session()
+    if session is None:
+        return {"error": err or "Login failed"}
+
+    results = []
+    for inbound in clients_data.get("obj", []):
+        iid = inbound.get("id")
+        if iid not in inbound_ids:
+            continue
+
+        settings_obj = parse_inbound_settings(inbound)
+        if not settings_obj:
+            results.append({"inbound_id": iid, "error": "bad settings"})
+            continue
+
+        protocol = inbound.get("protocol", "vless")
+        matches = find_clients_for_tg_on_inbound(settings_obj, tg_id, iid)
+        if not matches:
+            results.append({"inbound_id": iid, "skipped": "no client for this tg_id"})
+            continue
+
+        primary = matches[0]
+        for extra in matches[1:]:
+            em = extra.get("email")
+            if em:
+                panel_del_client_by_email(session, iid, em)
+
+        route_id = _client_route_id(protocol, primary)
+        if not route_id:
+            results.append({"inbound_id": iid, "error": "cannot resolve client id for API path"})
+            continue
+
+        updated = dict(primary)
+        updated["expiryTime"] = new_expiry
+        updated["enable"] = True
+        if updated.get("tgId") is None:
+            updated["tgId"] = tg_id
+
+        upd = panel_update_inbound_client(
+            session, iid, protocol, route_id, settings_obj, updated
+        )
+        results.append({"inbound_id": iid, "update_result": upd})
+
+    updated_rows = [r for r in results if "update_result" in r]
+    if not updated_rows:
+        success = False
+    else:
+        success = all(r["update_result"].get("success") for r in updated_rows)
+
+    return {
+        "success": success,
+        "message": f"Subscription renewed for {additional_months} months (expiry update)",
+        "old_expiry": current_expiry,
+        "new_expiry": new_expiry,
+        "results": results,
+    }
+
+
+def renew_subscription(tg_id: int, additional_months: int):
+    """Продлевает подписку на указанное количество месяцев (все инбаунды 1–4)."""
+    return renew_subscription_on_panel(tg_id, additional_months)
 
 def convert_timestamp_to_human_readable(timestamp_ms):
     """Конвертирует timestamp в миллисекундах в читаемый формат"""
@@ -344,195 +490,75 @@ def convert_date_to_timestamp(date_str):
 
 
 def add_client(inbound_id: int, username: str, tg_id: int, date: str):
-    """Добавляет клиента с конвертацией даты в timestamp"""
-    # Конвертируем дату в timestamp
-    expiry_timestamp = convert_date_to_timestamp(date)
-    
-    if isinstance(expiry_timestamp, str):  # Если вернулась ошибка
-        return {"error": expiry_timestamp}
-    
-    # Генерируем одинаковый subId для всех inbound'ов
-    import uuid
-    universal_subId = f"{username}_{tg_id}"
-    
-    # Générer un identifiant unique pour chaque inbound
+    """Новый клиент через API 3x-ui POST .../addClient (без массовой замены settings)."""
     import secrets
-    random_username = secrets.token_urlsafe(8)  # 8 caractères aléatoires uniques
+
+    expiry_timestamp = convert_date_to_timestamp(date)
+    if isinstance(expiry_timestamp, str):
+        return {"error": expiry_timestamp}
+
+    random_username = secrets.token_urlsafe(8)
     client_id = f"{random_username}_{tg_id}_{inbound_id}"
-    
-    # Vérifier le protocole de l'inbound pour les bons champs
+
     clients_data = get_clients()
-    if not clients_data.get('success'):
+    if not clients_data.get("success"):
         return {"error": "Failed to get current inbound data"}
-    
-    # Trouver le bon inbound pour déterminer le protocole
+
     target_inbound = None
-    for inbound in clients_data.get('obj', []):
-        if inbound.get('id') == inbound_id:
+    for inbound in clients_data.get("obj", []):
+        if inbound.get("id") == inbound_id:
             target_inbound = inbound
             break
-    
-    protocol = target_inbound.get('protocol', 'vless') if target_inbound else 'vless'
-    
-    # Former les données du client en fonction du protocole
-    if protocol == 'trojan':
-        # Pour trojan il faut un password au lieu de id
-        password = secrets.token_urlsafe(16)  # Générer un mot de passe aléatoire
+    if not target_inbound:
+        return {"error": f"Inbound with id {inbound_id} not found"}
+
+    protocol = target_inbound.get("protocol", "vless")
+    settings_obj = parse_inbound_settings(target_inbound)
+    if not settings_obj:
+        return {"error": "Failed to parse current settings"}
+
+    if protocol == "trojan":
+        password = secrets.token_urlsafe(16)
         client_data = {
             "password": password,
             "flow": "",
-            "email": f"{random_username}_{tg_id}_{inbound_id}",  # Email unique pour chaque inbound
+            "email": f"{random_username}_{tg_id}_{inbound_id}",
             "limitIp": 0,
             "totalGB": 0,
             "expiryTime": expiry_timestamp,
             "enable": True,
             "tgId": tg_id,
-            "subId": f"{random_username}_{tg_id}",  # Même subId pour tous les inbounds
+            "subId": f"{random_username}_{tg_id}",
             "comment": "",
-            "reset": 0
+            "reset": 0,
         }
-        print(f"[API] Creating trojan client with password: {password}")
+        print(f"[API] Creating trojan client for inbound {inbound_id}")
     else:
-        # Pour vless et autres protocoles on utilise id
         client_data = {
             "id": client_id,
             "flow": "",
-            "email": f"{random_username}_{tg_id}_{inbound_id}",  # Email unique pour chaque inbound
+            "email": f"{random_username}_{tg_id}_{inbound_id}",
             "limitIp": 0,
             "totalGB": 0,
             "expiryTime": expiry_timestamp,
             "enable": True,
             "tgId": tg_id,
-            "subId": f"{random_username}_{tg_id}",  # Même subId pour tous les inbounds
+            "subId": f"{random_username}_{tg_id}",
             "comment": "",
-            "reset": 0
+            "reset": 0,
         }
-        print(f"[API] Creating vless client with id: {client_id}")
-    
-    # Получаем текущие данные inbound
-    clients_data = get_clients()
-    if not clients_data.get('success'):
-        return {"error": "Failed to get current inbound data"}
-    
-    # Находим нужный inbound
-    target_inbound = None
-    for inbound in clients_data.get('obj', []):
-        if inbound.get('id') == inbound_id:
-            target_inbound = inbound
-            break
-    
-    if not target_inbound:
-        return {"error": f"Inbound with id {inbound_id} not found"}
-    
-    # Парсим текущие settings
-    current_settings = target_inbound.get('settings', '{}')
-    if isinstance(current_settings, str):
-        try:
-            settings_obj = json.loads(current_settings)
-        except json.JSONDecodeError:
-            return {"error": "Failed to parse current settings"}
-    else:
-        settings_obj = current_settings
-    
-    # Получаем текущих клиентов
-    current_clients = settings_obj.get('clients', [])
-    
-    print(f"[API] Current clients in inbound {inbound_id}: {len(current_clients)}")
-    print(f"[API] Inbound {inbound_id} structure: {target_inbound.get('protocol', 'unknown')} - {target_inbound.get('remark', 'no remark')}")
-    
-    for client in current_clients:
-        print(f"[API] - Client: tgId={client.get('tgId')}, email={client.get('email')}, id={client.get('id')}")
-    
-    # Special logging for inbound 4
-    if inbound_id == 4:
-        print(f"[API] Inbound 4 full structure:")
-        print(f"[API] - Protocol: {target_inbound.get('protocol')}")
-        print(f"[API] - Port: {target_inbound.get('port')}")
-        print(f"[API] - Settings type: {type(current_settings)}")
-        print(f"[API] - Settings keys: {list(settings_obj.keys()) if isinstance(settings_obj, dict) else 'not dict'}")
-        print(f"[API] - Required fields for inbound 4: {list(client.keys()) if current_clients else 'no clients'}")
-    
-    # Удаляем только записи этого пользователя (тот же tgId) или дубликат по email.
-    # Нельзя трогать чужих клиентов и шаблонные аккаунты (first / пустой tgId).
-    updated_clients = []
-    removed_count = 0
-    new_email = str(client_data.get('email', ''))
-    suffix = f"_{tg_id}_{inbound_id}"
+        print(f"[API] Creating vless client id={client_id} inbound={inbound_id}")
 
-    for client in current_clients:
-        client_tgId = str(client.get('tgId', ''))
-        client_email = str(client.get('email', ''))
+    session, err = panel_session()
+    if session is None:
+        return {"error": err or "Login failed"}
 
-        same_user = client_tgId == str(tg_id)
-        same_email = client_email == new_email
-        legacy_email_slot = client_email.endswith(suffix) and client_tgId in ("", "0")
+    for old in find_clients_for_tg_on_inbound(settings_obj, tg_id, inbound_id):
+        em = old.get("email")
+        if em:
+            panel_del_client_by_email(session, inbound_id, em)
 
-        should_remove = same_user or same_email or legacy_email_slot
-        
-        print(f"[API] Checking client: tgId={client_tgId}, email={client_email}")
-        print(f"[API] Target tgId: {tg_id}, new_email: {new_email}")
-        print(f"[API] Should remove: {should_remove} (same_user={same_user}, legacy_slot={legacy_email_slot})")
-        
-        if should_remove:
-            print(f"[API] Removing existing client: tgId={client_tgId}, email={client_email}")
-            removed_count += 1
-        else:
-            updated_clients.append(client)
-    
-    print(f"[API] Removed {removed_count} clients from inbound {inbound_id}")
-    
-    # Добавляем нового клиента
-    updated_clients.append(client_data)
-    
-    # Заменяем текущих клиентов на обновленный список
-    current_clients = updated_clients
-    
-    print(f"[API] Total clients after update: {len(current_clients)}")
-    
-    # Сохраняем прочие поля inbound settings (fallbacks у trojan и т.д.)
-    new_settings = {k: v for k, v in settings_obj.items() if k != "clients"}
-    new_settings["clients"] = current_clients
-    
-    print(f"[WARNING]Adding client to inbound {inbound_id}: {client_data}")
-    print(f"[WARNING]Total clients in inbound {inbound_id}: {len(current_clients)}")
-    
-    # Подготавливаем данные для API
-    settings_data = {
-        "id": inbound_id,
-        "settings": json.dumps(new_settings)
-    }
-    
-    print(f"[WARNING]Settings data being sent: {settings_data}")
-    
-    admin_login = {
-        "username": admn_username,
-        "password": admn_pass
-    }
-    
-    # Create session and login
-    session = requests.Session()
-    login_response = session.post(f"{BASE_URL}/login", json=admin_login, verify=False)
-    
-    if login_response.json().get('success'):
-        print(f"[API] Pushing clients to inbound {inbound_id} via updateClient")
-        print(f"[API] New settings: {json.dumps(new_settings)}")
-        response = session.post(
-            f"{BASE_URL}/panel/api/inbounds/updateClient",
-            json=settings_data,
-            verify=False,
-        )
-        print(f"[WARNING]Status Code: {response.status_code}")
-        print(f"[WARNING]Response: {response.text}")
-
-        if response.status_code != 200:
-            return {"success": False, "msg": response.text, "error": f"HTTP {response.status_code}"}
-
-        try:
-            return response.json()
-        except json.JSONDecodeError:
-            return {"success": True, "msg": response.text}
-    else:
-        return {"error": "Login failed"}
+    return panel_add_inbound_client(session, inbound_id, client_data, protocol)
 
 def check_cantfree(tg_id):
     """Проверяет есть ли пользователь в CantFree"""

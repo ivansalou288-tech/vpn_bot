@@ -1,6 +1,14 @@
 # Extended API functions for VPN client management
 
-from api import add_client, get_clients
+from api import (
+    add_client,
+    get_clients,
+    renew_subscription_on_panel,
+    find_clients_for_tg_on_inbound,
+    parse_inbound_settings,
+    panel_session,
+    panel_del_client_by_email,
+)
 import json
 
 def add_client_to_all_inbounds(username: str, tg_id: int, date: str):
@@ -32,129 +40,44 @@ def add_client_to_all_inbounds(username: str, tg_id: int, date: str):
     }
 
 def renew_subscription_all_inbounds(tg_id: int, additional_months: int):
-    """Renews subscription across all 4 inbound servers"""
-    from datetime import datetime, timedelta
-    import time
-    
+    """Продление на инбаундах 1–4: только новый expiryTime через updateClient/{id} (3x-ui)."""
     try:
-        # Get current client info
-        client_info = getSubById(tg_id)
-        
-        if not client_info.get('success'):
-            return {"error": "Client not found", "details": client_info}
-        
-        current_expiry = client_info['client_info']['expiryTime']
-        current_time = int(time.time() * 1000)
-        
-        # If current time is expired, start from current time
-        if current_expiry == 0:
-            new_expiry = current_time
-        else:
-            new_expiry = current_expiry
-        
-        # Add specified months
-        additional_time = additional_months * 30 * 24 * 60 * 60 * 1000  # Approximately months in milliseconds
-        new_expiry += additional_time
-        
-        # Get username
-        username = client_info['client_info']['email'].split('_')[0]
-        new_date = datetime.fromtimestamp(new_expiry / 1000).strftime('%d.%m.%Y')
-        
-        results = []
-        
-        # Delete old client from all inbounds and create new one
-        for inbound_id in range(1, 5):
-            print(f"[API] Processing inbound {inbound_id}...")
-            
-            # Delete old client
-            dell_result = dell_client(inbound_id, tg_id)
-            
-            # Create new client with updated time
-            add_result = add_client(inbound_id, username, tg_id, new_date)
-            
-            results.append({
-                "inbound_id": inbound_id,
-                "delete_result": dell_result,
-                "add_result": add_result
-            })
-                
-        return {
-            "success": True,
-            "message": f"Subscription renewed for {additional_months} months across all inbounds",
-            "old_expiry": current_expiry,
-            "new_expiry": new_expiry,
-            "results": results
-        }
-        
+        return renew_subscription_on_panel(tg_id, additional_months)
     except Exception as e:
         return {"error": str(e)}
 
 def dell_client(inbound_id: int, tg_id: int):
-    """Delete client from specific inbound"""
-    from api import BASE_URL, admn_username, admn_pass
-    import requests
-    
-    # Get current clients
+    """Удаляет всех клиентов с данным tgId на указанном inbound (delClientByEmail)."""
     clients_data = get_clients()
-    if not clients_data.get('success'):
+    if not clients_data.get("success"):
         return {"error": "Failed to get clients"}
-    
-    # Find target inbound
+
     target_inbound = None
-    for inbound in clients_data.get('obj', []):
-        if inbound.get('id') == inbound_id:
+    for inbound in clients_data.get("obj", []):
+        if inbound.get("id") == inbound_id:
             target_inbound = inbound
             break
-    
     if not target_inbound:
         return {"error": f"Inbound {inbound_id} not found"}
-    
-    # Parse current settings
-    current_settings = target_inbound.get('settings', '{}')
-    if isinstance(current_settings, str):
-        try:
-            settings_obj = json.loads(current_settings)
-        except json.JSONDecodeError:
-            return {"error": "Failed to parse settings"}
-    else:
-        settings_obj = current_settings
-    
-    # Get current clients
-    current_clients = settings_obj.get('clients', [])
-    
-    # Remove client with matching tgId
-    updated_clients = [client for client in current_clients if str(client.get('tgId')) != str(tg_id)]
-    
-    # Create new settings
-    new_settings = {
-        "clients": updated_clients,
-        "decryption": settings_obj.get('decryption', 'none'),
-        "encryption": settings_obj.get('encryption', 'none')
-    }
-    
-    # Update inbound
-    admin_login = {
-        "username": admn_username,
-        "password": admn_pass
-    }
-    
-    session = requests.Session()
-    login_response = session.post(f"{BASE_URL}/login", json=admin_login, verify=False)
-    
-    if login_response.json().get('success'):
-        settings_data = {
-            "id": inbound_id,
-            "settings": json.dumps(new_settings)
-        }
-        
-        response = session.post(f"{BASE_URL}/panel/api/inbounds/updateClient", json=settings_data, verify=False)
-        
-        if response.status_code == 200:
-            return {"success": True, "message": f"Client deleted from inbound {inbound_id}"}
-        else:
-            return {"error": f"HTTP {response.status_code}", "response": response.text}
-    else:
-        return {"error": "Login failed"}
+
+    settings_obj = parse_inbound_settings(target_inbound)
+    if not settings_obj:
+        return {"error": "Failed to parse settings"}
+
+    matches = find_clients_for_tg_on_inbound(settings_obj, tg_id, inbound_id)
+    if not matches:
+        return {"success": True, "message": f"No client tgId={tg_id} on inbound {inbound_id}"}
+
+    session, err = panel_session()
+    if session is None:
+        return {"error": err or "Login failed"}
+
+    last = None
+    for m in matches:
+        em = m.get("email")
+        if em:
+            last = panel_del_client_by_email(session, inbound_id, em)
+    return last or {"success": True, "message": f"Client deleted from inbound {inbound_id}"}
 
 def getSubById(telegram_id):
     """Get client info by Telegram ID across all inbounds"""
