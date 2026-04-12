@@ -795,7 +795,7 @@ async def subscription_callback(callback: types.CallbackQuery):
             subscription_keyboard = None
     elif status == "no_subscription":
         # Проверяем есть ли пользователь в CantFree (локально)
-        cantfree_result = await check_cantfree_local(user_tg_id)
+        cantfree_result = await check_cantfree(user_tg_id)
         
         if cantfree_result.get("exists") == False:
             # Пользователя нет в CantFree - предлагаем пробный период
@@ -859,7 +859,7 @@ async def trial_period_callback(callback: types.CallbackQuery):
     user_username = callback.from_user.username
     
     # Проверяем еще раз что пользователя нет в CantFree (локально)
-    cantfree_result = await check_cantfree_local(user_tg_id)
+    cantfree_result = await check_cantfree(user_tg_id)
     
     if cantfree_result.get("exists") == True:
         # Пользователь уже использовал пробный период
