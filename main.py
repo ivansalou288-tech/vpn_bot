@@ -258,7 +258,6 @@ async def get_subscription_info(user_tg_id: int):
                 return (
                     f"<tg-emoji emoji-id='5416081784641168838'>✅</tg-emoji> <b>Подписка активна</b>\n\n"
                     f"<tg-emoji emoji-id='5440621591387980068'>📅</tg-emoji> Дата окончания: <b>{expiry_date}</b>\n"
-                    f"<tg-emoji emoji-id='5440621591387980068'>🔑</tg-emoji> SubID: <code>{result.get('subId', '')}</code>\n"
                     f"<tg-emoji emoji-id='5417924076503062111'>💰</tg-emoji> Трафик: безлимитный",
                     "has_subscription"
                 )
@@ -786,7 +785,7 @@ async def subscription_callback(callback: types.CallbackQuery):
         if is_enabled:
             subscription_keyboard = InlineKeyboardMarkup(
                 inline_keyboard=[
-                    [InlineKeyboardButton(text="Использовать (Hupp)", url=f"https://www.ezhqpy.ru/uMp0MVDJNm/{sub_id}", style="primary", icon_custom_emoji_id='5271604874419647061')],
+                    [InlineKeyboardButton(text="Использовать", copy_text=CopyTextButton(text=f"https://www.ezhqpy.ru/uMp0MVDJNm/{sub_id}"), style="primary", icon_custom_emoji_id='5271604874419647061')],
                     [InlineKeyboardButton(text="Продлить подписку", callback_data="renew_subscription", style="primary", icon_custom_emoji_id='5231012545799666522')],
                     [instruction_btn],
                     [InlineKeyboardButton(text="Назад", callback_data="main_menu", style="danger")]
