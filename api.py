@@ -522,9 +522,39 @@ def add_client(inbound_id: int, username: str, tg_id: int, date: str):
     login_response = session.post(f"{BASE_URL}/login", json=admin_login, verify=False)
     
     if login_response.json().get('success'):
-        # Use addClient API with only the new client (replaces all existing clients)
-        print(f"[API] Replacing all clients in inbound {inbound_id} with new client")
-        response = session.post(f"{BASE_URL}/panel/api/inbounds/addClient", json=settings_data, verify=False)
+        # Get current inbound data to preserve other settings
+        current_inbound_data = None
+        for inbound in clients_data.get('obj', []):
+            if inbound.get('id') == inbound_id:
+                current_inbound_data = inbound
+                break
+        
+        if not current_inbound_data:
+            return {"error": f"Inbound {inbound_id} not found"}
+        
+        # Prepare complete inbound data with updated settings
+        inbound_update_data = {
+            "id": inbound_id,
+            "up": current_inbound_data.get('up', 0),
+            "down": current_inbound_data.get('down', 0),
+            "total": current_inbound_data.get('total', 0),
+            "remark": current_inbound_data.get('remark', ''),
+            "enable": current_inbound_data.get('enable', True),
+            "expiryTime": current_inbound_data.get('expiryTime', 0),
+            "trafficReset": current_inbound_data.get('trafficReset', 'never'),
+            "lastTrafficResetTime": current_inbound_data.get('lastTrafficResetTime', 0),
+            "listen": current_inbound_data.get('listen', ''),
+            "port": current_inbound_data.get('port', 0),
+            "protocol": current_inbound_data.get('protocol', 'vless'),
+            "settings": json.dumps(new_settings),  # Only new client
+            "streamSettings": current_inbound_data.get('streamSettings', '{}'),
+            "sniffing": current_inbound_data.get('sniffing', '{}'),
+            "allocate": current_inbound_data.get('allocate', '{}')
+        }
+        
+        print(f"[API] Updating inbound {inbound_id} with new client only")
+        print(f"[API] New settings: {json.dumps(new_settings)}")
+        response = session.post(f"{BASE_URL}/panel/api/inbounds/update", json=inbound_update_data, verify=False)
         print(f"[WARNING]Status Code: {response.status_code}")
         print(f"[WARNING]Response: {response.text}")
         
