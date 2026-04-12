@@ -289,23 +289,31 @@ def renew_subscription(tg_id: int, additional_months: int):
         if not inbound_id:
             return {"error": "Inbound not found"}
         
-        # Удаляем старого клиента
+        # Сначала удаляем ВСЕХ клиентов со всех inbound'ов
+        delete_results = []
         for i in range(1,5):
             dell_result = dell_client(i, tg_id)
-            
-            # Создаем нового клиента с обновленным временем
-            username = client_info['client_info']['email'].split('_')[0]
+            delete_results.append(dell_result)
+        
+        # Теперь добавляем новых клиентов на все inbound'ы
+        add_results = []
+        for i in range(1,5):
+            # Создаем нового клиента с обновленным временем и новым email
+            import secrets
+            # Генерируем новый случайный username для каждого inbound
+            new_username = secrets.token_urlsafe(8)  # 8 символов случайной строки
             new_date = datetime.datetime.fromtimestamp(new_expiry / 1000).strftime('%d.%m.%Y')
             
-            add_result = add_client(i, username, tg_id, new_date)
+            add_result = add_client(i, new_username, tg_id, new_date)
+            add_results.append(add_result)
                 
         return {
             "success": True,
-            "message": f"Subscription renewed for {additional_months} months",
+            "message": f"Subscription renewed for {additional_months} months across all inbounds",
             "old_expiry": current_expiry,
             "new_expiry": new_expiry,
-            "delete_result": dell_result,
-            "add_result": add_result
+            "delete_results": delete_results,
+            "add_results": add_results
         }
         
     except Exception as e:
