@@ -6,7 +6,6 @@ import re
 import sys
 import time
 from aiogram.types import LabeledPrice, Message, PreCheckoutQuery
-from aiogram.types.copy_text_button import CopyTextButton
 from botlogic import payment_keyboard 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
@@ -715,173 +714,6 @@ async def add_client_command(message: types.Message):
             parse_mode=ParseMode.HTML
         )
 
-@router.message(Command("notify"))
-async def broadcast_command(message: types.Message):
-    """Рассылает сообщение всем пользователям (только для админа)"""
-    if not is_admin(message.from_user.id):
-        await message.answer("⛔ У вас нет прав для выполнения этой команды.")
-        return
-    clean_text = message.html_text  # Получаем текст с HTML-тегами
-                    
-                    # Исправляем неправильные теги <tg-emoji> на правильные
-                    # Заменяем emoji_id на emoji-id
-    clean_text = clean_text.replace('emoji_id=', 'emoji-id=')
-    # Проверяем, есть ли текст после команды
-    args = clean_text.split(maxsplit=1)
-    if len(args) < 2:
-        await message.answer(
-            "📢 <b>Рассылка сообщений</b>\n\n"
-            "Использование:\n"
-            "<code>/notify Ваше сообщение</code>\n\n"
-            "Пример:\n"
-            "<code>/notify 🔔 Внимание! Проводятся технические работы...</code>\n\n"
-            "Поддерживаются Telegram эмодзи и HTML-теги.",
-            parse_mode=ParseMode.HTML
-        )
-        return
-    
-    broadcast_text = args[1]
-    
-    # Отправляем сообщение о начале рассылки
-    status_message = await message.answer("📢 Начинаю рассылку сообщений...")
-    
-    # Выполняем рассылку
-    result = await broadcast_to_all_users(broadcast_text)
-    
-    # Обновляем статусное сообщение
-    await status_message.edit_text(
-        f"✅ <b>Рассылка завершена!</b>\n\n"
-        f"📊 <b>Статистика:</b>\n"
-        f"• Успешно отправлено: <b>{result['success']}</b>\n"
-        f"• Ошибок: <b>{result['errors']}</b>\n"
-        f"• Всего пользователей: <b>{result['success'] + result['errors']}</b>",
-        parse_mode=ParseMode.HTML
-    )
-
-# Асинхронная функция для получения info из БД
-async def get_info(info_id: int = 1):
-    async with AsyncSessionLocal() as session:
-        result = await session.execute(select(Info).filter(Info.id == info_id))
-        info = result.scalar_one_or_none()
-        return info.value if info else "Информация не найдена"
-
-# Асинхронная функция для получения контактов из БД
-async def get_contact(contact_id: int = 1):
-    async with AsyncSessionLocal() as session:
-        result = await session.execute(select(Contacts).filter(Contacts.id == contact_id))
-        contact = result.scalar_one_or_none()
-        return contact.value if contact else "Контакты не найдены"
-
-# Импортируем функции из api.py
-import sys
-import os
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-
-def convert_timestamp_to_human_readable(timestamp_ms):
-    """Конвертирует timestamp в миллисекундах в читаемый формат ДД.ММ.ГГГГ ЧЧ:ММ:СС"""
-    if timestamp_ms == 0:
-        return "Не ограничено"
-    
-    try:
-        # Конвертируем миллисекунды в секунды
-        timestamp_s = timestamp_ms / 1000
-        # Создаем datetime объект
-        dt = datetime.datetime.fromtimestamp(timestamp_s)
-        # Форматируем в ДД.ММ.ГГГГ ЧЧ:ММ:СС
-        return dt.strftime("%d.%m.%Y %H:%M:%S")
-    except (ValueError, OSError) as e:
-        return f"Ошибка конвертации: {e}"
-
-# Асинхронная функция для проверки пользователя в CantFree (локальная)
-async def check_cantfree_local(tg_id):
-    """Проверяет есть ли пользователь в локальной CantFree таблице"""
-    async with AsyncSessionLocal() as session:
-        result = await session.execute(select(CantFree).filter(CantFree.user_id == tg_id))
-        user = result.scalar_one_or_none()
-        return {"exists": user is not None}
-
-# Асинхронная функция для добавления пользователя в CantFree (локальная)
-async def add_to_cantfree_local(tg_id, username):
-    """Добавляет пользователя в локальную CantFree таблицу"""
-    async with AsyncSessionLocal() as session:
-        # Проверяем есть ли уже такой пользователь
-        result = await session.execute(select(CantFree).filter(CantFree.user_id == tg_id))
-        existing_user = result.scalar_one_or_none()
-        
-        if existing_user:
-            return {"success": False, "message": "User already exists"}
-        
-        # Добавляем нового пользователя
-        new_user = CantFree(user_id=tg_id)
-        session.add(new_user)
-        await session.commit()
-        await session.refresh(new_user)
-        return {"success": True, "message": "User added to CantFree"}
-
-# Асинхронная функция для получения информации о подписке по TG ID
-async def get_subscription_info(tg_id: int):
-    # Проверяем основную подписку через API
-    try:
-        result = getSubById(tg_id)
-
-        if result.get('success'):
-            # Проверяем время подписки
-            expiry_time = result['client_info']['expiryTime']
-            current_time = int(time.time() * 1000)  # Текущее время в миллисекундах
-            
-            # Если время подписки вышло, удаляем клиента
-            if expiry_time != 0 and expiry_time < current_time:
-                # Получаем inboundId для удаления
-                clients_data = get_clients()
-                inbound_id = None
-                
-                if clients_data.get('success'):
-                    inbounds = clients_data.get('obj', [])
-                    for inbound in inbounds:
-                        if 'settings' in inbound:
-                            settings = inbound['settings']
-                            if isinstance(settings, str):
-                                try:
-                                    settings = json.loads(settings)
-                                except json.JSONDecodeError:
-                                    continue
-                            
-                            if 'clients' in settings:
-                                clients = settings['clients']
-                                for client in clients:
-                                    if str(client.get('tgId')) == str(tg_id):
-                                        inbound_id = inbound.get('id')
-                                        break
-                        if inbound_id:
-                            break
-                
-                # Удаляем клиента
-                if inbound_id:
-                    dell_client(inbound_id, tg_id)
-                
-                return "<tg-emoji emoji-id='5411225014148014586'>❌</tg-emoji> Время вашей подписки истекло\n\nДля получения доступа к VPN необходимо оформить подписку.", "no_subscription"
-            
-            # Проверяем статус подписки
-            is_enabled = result['client_info']['enable']
-            status_emoji = "<tg-emoji emoji-id='5416081784641168838'>✅</tg-emoji>" if is_enabled else "<tg-emoji emoji-id='5411225014148014586'>❌</tg-emoji>"
-            status_text = "Подписка активна" if is_enabled else "Подписка неактивна"
-            
-            # Проверяем лимит
-            total_gb = result['client_info']['totalGB']
-            limit_text = "Безлимитный" if total_gb == 0 else f"{total_gb} GB"
-            
-            return f"{status_emoji} {status_text}\n\n" \
-                   f"<tg-emoji emoji-id='5440621591387980068'>⏰</tg-emoji> Истекает: {convert_timestamp_to_human_readable(result['client_info']['expiryTime'])}\n" \
-                   f"<tg-emoji emoji-id='5375338737028841420'>💾</tg-emoji> Лимит: {limit_text}", "has_subscription"
-        else:
-            error_msg = result.get('error', '')
-            if "No client found with tgId" in error_msg:
-                return "<tg-emoji emoji-id='5411225014148014586'>❌</tg-emoji> У вас нет подписки\n\nДля получения доступа к VPN необходимо оформить подписку.", "no_subscription"
-            else:
-                return f"<tg-emoji emoji-id='5411225014148014586'>❌</tg-emoji> {result.get('error', 'Подписка не найдена')}", "error"
-    except Exception as e:
-        return f"<tg-emoji emoji-id='5411225014148014586'>❌</tg-emoji> Ошибка при проверке подписки: {str(e)}", "error"
-
 @router.callback_query(lambda callback: callback.data == "subscription")
 async def subscription_callback(callback: types.CallbackQuery):
     await callback.answer()
@@ -906,7 +738,7 @@ async def subscription_callback(callback: types.CallbackQuery):
         if is_enabled:
             subscription_keyboard = InlineKeyboardMarkup(
                 inline_keyboard=[
-                    [CopyTextButton(text="Использовать (Hupp)",  style="primary", icon_custom_emoji_id='5271604874419647061')],
+                    [InlineKeyboardButton(text="Использовать (Hupp)", copy_text=f"https://www.ezhqpy.ru/uMp0MVDJNm/{sub_id}", style="primary", icon_custom_emoji_id='5271604874419647061')],
                     [InlineKeyboardButton(text="Продлить подписку", callback_data="renew_subscription", style="primary", icon_custom_emoji_id='5231012545799666522')],
                     [instruction_btn],
                     [InlineKeyboardButton(text="Назад", callback_data="main_menu", style="danger")]
