@@ -879,6 +879,27 @@ async def trial_period_callback(callback: types.CallbackQuery):
     
     # Добавляем пользователя в CantFree (локально)
     add_result = await add_to_cantfree_local(user_tg_id, user_username)
+
+async def remove_from_cantfree_local(user_id: int):
+    """Удаляет пользователя из списка CantFree"""
+    async with AsyncSessionLocal() as session:
+        try:
+            # Ищем пользователя в таблице CantFree
+            result = await session.execute(
+                select(CantFree).where(CantFree.user_id == user_id)
+            )
+            cantfree_user = result.scalar_one_or_none()
+            
+            if cantfree_user:
+                # Удаляем пользователя
+                await session.delete(cantfree_user)
+                await session.commit()
+                return {"success": True, "message": f"Пользователь {user_id} удален из CantFree"}
+            else:
+                return {"success": False, "message": f"Пользователь {user_id} не найден в CantFree"}
+        except Exception as e:
+            await session.rollback()
+            return {"success": False, "error": str(e)}
     
     if add_result.get("success"):
         # Создаем пробную подписку на 3 дня через API
