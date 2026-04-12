@@ -522,79 +522,15 @@ def add_client(inbound_id: int, username: str, tg_id: int, date: str):
     login_response = session.post(f"{BASE_URL}/login", json=admin_login, verify=False)
     
     if login_response.json().get('success'):
-        # Получаем свежие данные о клиентах из API
-        fresh_clients_data = get_clients()
-        if not fresh_clients_data.get('success'):
-            return {"error": "Failed to get fresh client data"}
-        
-        # Находим текущий inbound в свежих данных
-        fresh_target_inbound = None
-        for inbound in fresh_clients_data.get('obj', []):
-            if inbound.get('id') == inbound_id:
-                fresh_target_inbound = inbound
-                break
-        
-        if not fresh_target_inbound:
-            return {"error": f"Fresh inbound data not found for id {inbound_id}"}
-        
-        # Получаем свежих клиентов
-        fresh_settings = fresh_target_inbound.get('settings', '{}')
-        if isinstance(fresh_settings, str):
-            try:
-                fresh_settings_obj = json.loads(fresh_settings)
-            except json.JSONDecodeError:
-                return {"error": "Failed to parse fresh settings"}
-        else:
-            fresh_settings_obj = fresh_settings
-        
-        fresh_clients = fresh_settings_obj.get('clients', [])
-        
-        # Удаляем ВСЕХ свежих клиентов через API
-        delete_errors = []
-        for client in fresh_clients:
-            client_tgId = str(client.get('tgId', ''))
-            client_email = str(client.get('email', ''))
-            
-            # Удаляем ВСЕ клиентов для чистого inbound'а
-            should_delete = True  # Удаляем всех клиентов
-            
-            if should_delete:
-                # Для delClient API нужно использовать ID клиента из clientStats
-                # Ищем client_id в clientStats по email
-                client_id_to_delete = None
-                client_stats = fresh_target_inbound.get('clientStats', [])
-                
-                for stat_client in client_stats:
-                    if stat_client.get('email') == client.get('email'):
-                        client_id_to_delete = stat_client.get('id')
-                        break
-                
-                if client_id_to_delete:
-                    delete_data = {
-                        "id": inbound_id,
-                        "client_id": client_id_to_delete
-                    }
-                    
-                    print(f"[API] Deleting FRESH client: email={client.get('email')}, client_id={client_id_to_delete} from inbound {inbound_id}")
-                    delete_response = session.post(f"{BASE_URL}/panel/api/inbounds/delClient", json=delete_data, verify=False)
-                    
-                    if delete_response.status_code != 200:
-                        delete_errors.append(f"Failed to delete {client.get('email')}: {delete_response.text}")
-                    else:
-                        print(f"[API] Successfully deleted client: {client.get('email')} (ID: {client_id_to_delete})")
-                else:
-                    print(f"[API] Client ID not found for email: {client.get('email')}")
-                    delete_errors.append(f"Client ID not found for email: {client.get('email')}")
-        
-        # Теперь добавляем нового клиента в очищенный inbound
+        # Use addClient API with only the new client (replaces all existing clients)
+        print(f"[API] Replacing all clients in inbound {inbound_id} with new client")
         response = session.post(f"{BASE_URL}/panel/api/inbounds/addClient", json=settings_data, verify=False)
         print(f"[WARNING]Status Code: {response.status_code}")
         print(f"[WARNING]Response: {response.text}")
         
         result = {
             "success": response.status_code == 200,
-            "msg": response.text,
-            "delete_errors": delete_errors
+            "msg": response.text
         }
         
         if response.status_code == 200:
