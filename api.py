@@ -375,31 +375,18 @@ def panel_update_inbound_client(session, inbound_id, protocol, route_client_id, 
         return {"success": False, "msg": r.text}
 
 
-def renew_subscription_on_panel(tg_id: int, additional_months: int, inbound_ids=None):
-    """
-    Продление по API 3x-ui: для каждого inbound находим клиента по tgId и шлём
-    POST .../updateClient/{clientId} с новым expiryTime (UUID/subId не меняются).
-    """
+def _apply_expiry_to_user_inbounds(tg_id: int, new_expiry_ms: int, inbound_ids=None):
+    """Обновляет expiryTime у клиента на указанных inbound (без смены subId / UUID)."""
     if inbound_ids is None:
         inbound_ids = {1, 2, 3, 4}
 
-    client_info = getSubById(tg_id)
-    if not client_info.get("success"):
-        return {"error": "Client not found", "details": client_info}
-
-    current_expiry = client_info["client_info"]["expiryTime"]
-    current_time = int(time.time() * 1000)
-    new_expiry = current_time if current_expiry == 0 else current_expiry
-    additional_ms = additional_months * 30 * 24 * 60 * 60 * 1000
-    new_expiry += additional_ms
-
     clients_data = get_clients()
     if not clients_data.get("success"):
-        return {"error": "Failed to get inbounds", "details": clients_data}
+        return {"success": False, "error": "Failed to get inbounds", "details": clients_data, "results": []}
 
     session, err = panel_session()
     if session is None:
-        return {"error": err or "Login failed"}
+        return {"success": False, "error": err or "Login failed", "results": []}
 
     results = []
     for inbound in clients_data.get("obj", []):
@@ -430,7 +417,7 @@ def renew_subscription_on_panel(tg_id: int, additional_months: int, inbound_ids=
             continue
 
         updated = dict(primary)
-        updated["expiryTime"] = new_expiry
+        updated["expiryTime"] = new_expiry_ms
         updated["enable"] = True
         if updated.get("tgId") is None:
             updated["tgId"] = tg_id
@@ -446,13 +433,67 @@ def renew_subscription_on_panel(tg_id: int, additional_months: int, inbound_ids=
     else:
         success = all(r["update_result"].get("success") for r in updated_rows)
 
-    return {
-        "success": success,
+    return {"success": success, "results": results}
+
+
+def renew_subscription_on_panel(tg_id: int, additional_months: int, inbound_ids=None):
+    """
+    Продление: текущий срок (или сейчас, если истёк) + N месяцев по 30 суток.
+    """
+    if inbound_ids is None:
+        inbound_ids = {1, 2, 3, 4}
+
+    client_info = getSubById(tg_id)
+    if not client_info.get("success"):
+        return {"error": "Client not found", "details": client_info}
+
+    current_expiry = client_info["client_info"]["expiryTime"]
+    current_time = int(time.time() * 1000)
+    new_expiry = current_time if current_expiry == 0 else current_expiry
+    additional_ms = additional_months * 30 * 24 * 60 * 60 * 1000
+    new_expiry += additional_ms
+
+    core = _apply_expiry_to_user_inbounds(tg_id, new_expiry, inbound_ids)
+    out = {
+        "success": core["success"],
         "message": f"Subscription renewed for {additional_months} months (expiry update)",
         "old_expiry": current_expiry,
         "new_expiry": new_expiry,
-        "results": results,
+        "results": core["results"],
     }
+    if core.get("error"):
+        out["error"] = core["error"]
+    if core.get("details"):
+        out["details"] = core["details"]
+    return out
+
+
+def set_subscription_expiry_on_panel(tg_id: int, new_expiry_ms: int, inbound_ids=None):
+    """
+    Выставить дату окончания подписки в абсолютное время (на всех инбаундах 1–4).
+    Для админки: «на 1 месяц» = до now+30d, а не продление поверх остатка.
+    """
+    if inbound_ids is None:
+        inbound_ids = {1, 2, 3, 4}
+
+    client_info = getSubById(tg_id)
+    old_expiry = 0
+    if client_info.get("success"):
+        old_expiry = client_info["client_info"].get("expiryTime") or 0
+
+    core = _apply_expiry_to_user_inbounds(tg_id, new_expiry_ms, inbound_ids)
+    out = {
+        "success": core["success"],
+        "message": "Subscription expiry set",
+        "old_expiry": old_expiry,
+        "new_expiry": new_expiry_ms,
+        "results": core["results"],
+    }
+    if core.get("error"):
+        out["error"] = core["error"]
+    if core.get("details"):
+        out["details"] = core["details"]
+    return out
 
 
 def renew_subscription(tg_id: int, additional_months: int):
@@ -490,15 +531,22 @@ def convert_date_to_timestamp(date_str):
 
 
 def add_client(inbound_id: int, username: str, tg_id: int, date: str):
-    """Новый клиент через API 3x-ui POST .../addClient (без массовой замены settings)."""
+    """
+    Новый клиент через POST .../addClient.
+    Параметр username — общий префикс для subId на всех инбаундах: subId = {username}_{tg_id},
+    email/id на инбаунде = {username}_{tg_id}_{inbound_id}. Если username пустой — генерируется случайный префикс.
+    """
     import secrets
 
     expiry_timestamp = convert_date_to_timestamp(date)
     if isinstance(expiry_timestamp, str):
         return {"error": expiry_timestamp}
 
-    random_username = secrets.token_urlsafe(8)
-    client_id = f"{random_username}_{tg_id}_{inbound_id}"
+    prefix_raw = (username or "").strip() if username is not None else ""
+    prefix = prefix_raw if prefix_raw else secrets.token_urlsafe(8)
+    sub_id = f"{prefix}_{tg_id}"
+    email = f"{prefix}_{tg_id}_{inbound_id}"
+    client_id = f"{prefix}_{tg_id}_{inbound_id}"
 
     clients_data = get_clients()
     if not clients_data.get("success"):
@@ -522,32 +570,32 @@ def add_client(inbound_id: int, username: str, tg_id: int, date: str):
         client_data = {
             "password": password,
             "flow": "",
-            "email": f"{random_username}_{tg_id}_{inbound_id}",
+            "email": email,
             "limitIp": 0,
             "totalGB": 0,
             "expiryTime": expiry_timestamp,
             "enable": True,
             "tgId": tg_id,
-            "subId": f"{random_username}_{tg_id}",
+            "subId": sub_id,
             "comment": "",
             "reset": 0,
         }
-        print(f"[API] Creating trojan client for inbound {inbound_id}")
+        print(f"[API] Creating trojan client for inbound {inbound_id} subId={sub_id}")
     else:
         client_data = {
             "id": client_id,
             "flow": "",
-            "email": f"{random_username}_{tg_id}_{inbound_id}",
+            "email": email,
             "limitIp": 0,
             "totalGB": 0,
             "expiryTime": expiry_timestamp,
             "enable": True,
             "tgId": tg_id,
-            "subId": f"{random_username}_{tg_id}",
+            "subId": sub_id,
             "comment": "",
             "reset": 0,
         }
-        print(f"[API] Creating vless client id={client_id} inbound={inbound_id}")
+        print(f"[API] Creating vless client id={client_id} inbound={inbound_id} subId={sub_id}")
 
     session, err = panel_session()
     if session is None:

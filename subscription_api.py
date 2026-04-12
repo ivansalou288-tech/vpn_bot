@@ -482,6 +482,10 @@ async def admin_add_client_endpoint(request: dict):
     try:
         tg_id = request.get('tg_id')
         months = request.get('months', 1)
+        try:
+            months = int(months)
+        except (TypeError, ValueError):
+            months = 1
         end_date = request.get('end_date')
         
         if not tg_id:
