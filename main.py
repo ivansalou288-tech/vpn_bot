@@ -22,7 +22,7 @@ from aiogram.utils.keyboard import InlineKeyboardMarkup, InlineKeyboardButton
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-from api import add_client, getSubById, check_cantfree, add_to_cantfree, dell_client, get_clients, renew_subscription
+from api import add_client, getSubById, check_cantfree, add_to_cantfree, dell_client, get_clients, renew_subscription, convert_timestamp_to_human_readable
 from api_sheets import add_vpn_sale
 from payment_api import create_paycore_payment, get_payment_status, set_bot_instance, update_payment_message_id
 
@@ -234,6 +234,54 @@ async def get_all_users():
         return users
 
 # Асинхронная функция для рассылки сообщения всем пользователям
+async def get_subscription_info(user_tg_id: int):
+    """Получает информацию о подписке пользователя"""
+    try:
+        result = getSubById(user_tg_id)
+        
+        if result.get('success'):
+            client_info = result.get('client_info', {})
+            expiry_time = client_info.get('expiryTime', 0)
+            
+            # Конвертируем timestamp в читаемый формат
+            expiry_date = convert_timestamp_to_human_readable(expiry_time)
+            
+            # Проверяем активна ли подписка
+            current_time = datetime.datetime.now()
+            if expiry_time > 0:
+                expiry_datetime = datetime.datetime.fromtimestamp(expiry_time / 1000)
+                is_active = expiry_datetime > current_time
+            else:
+                is_active = False
+            
+            if is_active:
+                return (
+                    f"<tg-emoji emoji-id='5416081784641168838'>✅</tg-emoji> <b>Подписка активна</b>\n\n"
+                    f"<tg-emoji emoji-id='5440621591387980068'>📅</tg-emoji> Дата окончания: <b>{expiry_date}</b>\n"
+                    f"<tg-emoji emoji-id='5440621591387980068'>🔑</tg-emoji> SubID: <code>{result.get('subId', '')}</code>\n"
+                    f"<tg-emoji emoji-id='5417924076503062111'>💰</tg-emoji> Трафик: безлимитный",
+                    "has_subscription"
+                )
+            else:
+                return (
+                    f"<tg-emoji emoji-id='5411225014148014586'>❌</tg-emoji> <b>Подписка истекла</b>\n\n"
+                    f"<tg-emoji emoji-id='5440621591387980068'>📅</tg-emoji> Дата окончания: <b>{expiry_date}</b>\n"
+                    f"<tg-emoji emoji-id='5416081784641168838'>🔄</tg-emoji> Продлите подписку для продолжения использования.",
+                    "no_subscription"
+                )
+        else:
+            return (
+                f"<tg-emoji emoji-id='5411225014148014586'>❌</tg-emoji> <b>Подписка не найдена</b>\n\n"
+                f"<tg-emoji emoji-id='5416081784641168838'>🛒</tg-emoji> Оформите подписку для использования VPN.",
+                "no_subscription"
+            )
+    except Exception as e:
+        return (
+            f"<tg-emoji emoji-id='5411225014148014586'>⚠️</tg-emoji> <b>Ошибка проверки подписки</b>\n\n"
+            f"Попробуйте позже или обратитесь в поддержку.",
+            "error"
+        )
+
 async def broadcast_to_all_users(message_text: str):
     users = await get_all_users()
     success_count = 0
