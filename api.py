@@ -519,15 +519,53 @@ def add_client(inbound_id: int, username: str, tg_id: int, date: str):
     login_response = session.post(f"{BASE_URL}/login", json=admin_login, verify=False)
     
     if login_response.json().get('success'):
-        # Используем только addClient endpoint с правильными данными
+        # Сначала удаляем существующих клиентов через API
+        delete_errors = []
+        for client in current_clients:
+            client_tgId = str(client.get('tgId', ''))
+            client_email = str(client.get('email', ''))
+            new_email = str(client_data.get('email', ''))
+            
+            # Удаляем клиента если он совпадает по условиям
+            should_delete = (
+                client_tgId == str(tg_id) or 
+                client_email == new_email or
+                client_email.startswith('first') or
+                client_tgId in ['', '0']
+            )
+            
+            if should_delete:
+                # Для VLESS используем client.id, для Trojan используем client.email
+                client_identifier = client.get('id') if client.get('id') else client.get('email')
+                
+                delete_data = {
+                    "id": inbound_id,
+                    "client_id": client_identifier
+                }
+                
+                print(f"[API] Deleting client: {client_identifier} from inbound {inbound_id}")
+                delete_response = session.post(f"{BASE_URL}/panel/api/inbounds/delClient", json=delete_data, verify=False)
+                
+                if delete_response.status_code != 200:
+                    delete_errors.append(f"Failed to delete {client_identifier}: {delete_response.text}")
+                else:
+                    print(f"[API] Successfully deleted client: {client_identifier}")
+        
+        # Теперь добавляем нового клиента
         response = session.post(f"{BASE_URL}/panel/api/inbounds/addClient", json=settings_data, verify=False)
         print(f"[WARNING]Status Code: {response.status_code}")
         print(f"[WARNING]Response: {response.text}")
         
+        result = {
+            "success": response.status_code == 200,
+            "msg": response.text,
+            "delete_errors": delete_errors
+        }
+        
         if response.status_code == 200:
-            return response.json()
-        else:
-            return {"error": f"HTTP {response.status_code}", "response": response.text}
+            result.update(response.json())
+        
+        return result
     else:
         return {"error": "Login failed"}
 
