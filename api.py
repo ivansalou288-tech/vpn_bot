@@ -290,11 +290,6 @@ def renew_subscription(tg_id: int, additional_months: int):
             return {"error": "Inbound not found"}
         
         # Сначала удаляем ВСЕХ клиентов со всех inbound'ов
-        delete_results = []
-        for i in range(1,5):
-            dell_result = dell_client(i, tg_id)
-            delete_results.append(dell_result)
-        
         # Теперь добавляем новых клиентов на все inbound'ы
         add_results = []
         for i in range(1,5):
@@ -312,7 +307,6 @@ def renew_subscription(tg_id: int, additional_months: int):
             "message": f"Subscription renewed for {additional_months} months across all inbounds",
             "old_expiry": current_expiry,
             "new_expiry": new_expiry,
-            "delete_results": delete_results,
             "add_results": add_results
         }
         
