@@ -452,31 +452,26 @@ def add_client(inbound_id: int, username: str, tg_id: int, date: str):
         print(f"[API] - Settings keys: {list(settings_obj.keys()) if isinstance(settings_obj, dict) else 'not dict'}")
         print(f"[API] - Required fields for inbound 4: {list(client.keys()) if current_clients else 'no clients'}")
     
-    # Удаляем старых клиентов:
-    # 1. С таким же tgId (для обновления подписки)
-    # 2. С таким же email (для избежания дублирования)
+    # Удаляем только записи этого пользователя (тот же tgId) или дубликат по email.
+    # Нельзя трогать чужих клиентов и шаблонные аккаунты (first / пустой tgId).
     updated_clients = []
     removed_count = 0
-    
+    new_email = str(client_data.get('email', ''))
+    suffix = f"_{tg_id}_{inbound_id}"
+
     for client in current_clients:
         client_tgId = str(client.get('tgId', ''))
         client_email = str(client.get('email', ''))
-        new_email = str(client_data.get('email', ''))
-        
-        # Для админ функции удаляем ВСЕ существующих клиентов
-        # чтобы освободить inbound для нового клиента
-        should_remove = (
-            client_tgId == str(tg_id) or 
-            client_email == new_email or
-            client_email.startswith('first') or
-            client_tgId in ['', '0'] or
-            # Для админ функции: удаляем всех клиентов чтобы освободить inbound
-            (client_tgId != '' and client_tgId != '0' and client_tgId != str(tg_id))
-        )
+
+        same_user = client_tgId == str(tg_id)
+        same_email = client_email == new_email
+        legacy_email_slot = client_email.endswith(suffix) and client_tgId in ("", "0")
+
+        should_remove = same_user or same_email or legacy_email_slot
         
         print(f"[API] Checking client: tgId={client_tgId}, email={client_email}")
         print(f"[API] Target tgId: {tg_id}, new_email: {new_email}")
-        print(f"[API] Should remove: {should_remove}")
+        print(f"[API] Should remove: {should_remove} (same_user={same_user}, legacy_slot={legacy_email_slot})")
         
         if should_remove:
             print(f"[API] Removing existing client: tgId={client_tgId}, email={client_email}")
@@ -494,12 +489,9 @@ def add_client(inbound_id: int, username: str, tg_id: int, date: str):
     
     print(f"[API] Total clients after update: {len(current_clients)}")
     
-    # Создаем новые settings со всеми клиентами
-    new_settings = {
-        "clients": current_clients,  # Все клиенты включая нового
-        "decryption": settings_obj.get('decryption', 'none'),
-        "encryption": settings_obj.get('encryption', 'none')
-    }
+    # Сохраняем прочие поля inbound settings (fallbacks у trojan и т.д.)
+    new_settings = {k: v for k, v in settings_obj.items() if k != "clients"}
+    new_settings["clients"] = current_clients
     
     print(f"[WARNING]Adding client to inbound {inbound_id}: {client_data}")
     print(f"[WARNING]Total clients in inbound {inbound_id}: {len(current_clients)}")
@@ -522,51 +514,23 @@ def add_client(inbound_id: int, username: str, tg_id: int, date: str):
     login_response = session.post(f"{BASE_URL}/login", json=admin_login, verify=False)
     
     if login_response.json().get('success'):
-        # Get current inbound data to preserve other settings
-        current_inbound_data = None
-        for inbound in clients_data.get('obj', []):
-            if inbound.get('id') == inbound_id:
-                current_inbound_data = inbound
-                break
-        
-        if not current_inbound_data:
-            return {"error": f"Inbound {inbound_id} not found"}
-        
-        # Prepare complete inbound data with updated settings
-        inbound_update_data = {
-            "id": inbound_id,
-            "up": current_inbound_data.get('up', 0),
-            "down": current_inbound_data.get('down', 0),
-            "total": current_inbound_data.get('total', 0),
-            "remark": current_inbound_data.get('remark', ''),
-            "enable": current_inbound_data.get('enable', True),
-            "expiryTime": current_inbound_data.get('expiryTime', 0),
-            "trafficReset": current_inbound_data.get('trafficReset', 'never'),
-            "lastTrafficResetTime": current_inbound_data.get('lastTrafficResetTime', 0),
-            "listen": current_inbound_data.get('listen', ''),
-            "port": current_inbound_data.get('port', 0),
-            "protocol": current_inbound_data.get('protocol', 'vless'),
-            "settings": json.dumps(new_settings),  # Only new client
-            "streamSettings": current_inbound_data.get('streamSettings', '{}'),
-            "sniffing": current_inbound_data.get('sniffing', '{}'),
-            "allocate": current_inbound_data.get('allocate', '{}')
-        }
-        
-        print(f"[API] Updating inbound {inbound_id} with new client only")
+        print(f"[API] Pushing clients to inbound {inbound_id} via updateClient")
         print(f"[API] New settings: {json.dumps(new_settings)}")
-        response = session.post(f"{BASE_URL}/panel/api/inbounds/update", json=inbound_update_data, verify=False)
+        response = session.post(
+            f"{BASE_URL}/panel/api/inbounds/updateClient",
+            json=settings_data,
+            verify=False,
+        )
         print(f"[WARNING]Status Code: {response.status_code}")
         print(f"[WARNING]Response: {response.text}")
-        
-        result = {
-            "success": response.status_code == 200,
-            "msg": response.text
-        }
-        
-        if response.status_code == 200:
-            result.update(response.json())
-        
-        return result
+
+        if response.status_code != 200:
+            return {"success": False, "msg": response.text, "error": f"HTTP {response.status_code}"}
+
+        try:
+            return response.json()
+        except json.JSONDecodeError:
+            return {"success": True, "msg": response.text}
     else:
         return {"error": "Login failed"}
 
