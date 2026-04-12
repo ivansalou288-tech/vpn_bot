@@ -528,7 +528,7 @@ def is_admin(user_id: int) -> bool:
 subscription_btn = InlineKeyboardButton(text="Подписка", callback_data="subscription", style="primary", icon_custom_emoji_id='5296369303661067030')
 contact_btn = InlineKeyboardButton(text="Связь", callback_data="contact", style="primary", icon_custom_emoji_id='5443038326535759644')
 info_btn = InlineKeyboardButton(text="Информация", callback_data="info", style="primary", icon_custom_emoji_id='5282843764451195532')
-instruction_btn = InlineKeyboardButton(text="Инструкция и приложение", url = 'https://www.ezhqpy.ru/vpn_bot/index.html', style="success", icon_custom_emoji_id='5282843764451195532')
+instruction_btn = InlineKeyboardButton(text="Инструкция и приложение", url = 'https://panel.ezhqpy.ru/vpn_bot/index.html', style="success", icon_custom_emoji_id='5282843764451195532')
 app_btn = InlineKeyboardButton(text="Приложение", callback_data="app", style="primary")
 buy_subscription_btn = InlineKeyboardButton(text="Купить подписку", callback_data="buy_subscription", style="primary", icon_custom_emoji_id='5271604874419647061')
 referral_btn = InlineKeyboardButton(text="Реферальная программа", callback_data="referral", style="primary", icon_custom_emoji_id='5416081784641168838')
@@ -785,7 +785,7 @@ async def subscription_callback(callback: types.CallbackQuery):
         if is_enabled:
             subscription_keyboard = InlineKeyboardMarkup(
                 inline_keyboard=[
-                    [InlineKeyboardButton(text="Использовать", copy_text=CopyTextButton(text=f"https://www.ezhqpy.ru/uMp0MVDJNm/{sub_id}"), style="primary", icon_custom_emoji_id='5271604874419647061')],
+                    [InlineKeyboardButton(text="Скопировать конфиг", copy_text=CopyTextButton(text=f"https://www.ezhqpy.ru/uMp0MVDJNm/{sub_id}"), style="primary", icon_custom_emoji_id='5271604874419647061')],
                     [InlineKeyboardButton(text="Продлить подписку", callback_data="renew_subscription", style="primary", icon_custom_emoji_id='5231012545799666522')],
                     [instruction_btn],
                     [InlineKeyboardButton(text="Назад", callback_data="main_menu", style="danger")]
