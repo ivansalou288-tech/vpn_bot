@@ -1308,15 +1308,115 @@ async def sbp_paid_callback(callback: types.CallbackQuery):
         status = payment_info.get("status")
         
         if status == "completed":
-            # Платёж подтверждён
+            # Платёж подтверждён - активируем подписку
             try:
+                # Получаем информацию о платеже для извлечения данных
+                payment_details = get_payment_status(order_id)
+                if payment_details.get("exists"):
+                    time_months = payment_details.get("time_months", 1)
+                    price_rubles = payment_details.get("amount", 0)
+                    
+                    # Проверяем, есть ли у пользователя уже подписка
+                    subscription_info, status = await get_subscription_info(callback.from_user.id)
+                    
+                    if status == "has_subscription":
+                        # У пользователя есть подписка - продлеваем
+                        renew_result = renew_subscription(callback.from_user.id, time_months)
+                        
+                        if renew_result.get('success'):
+                            new_expiry = renew_result.get('new_expiry')
+                            end_time = datetime.datetime.fromtimestamp(new_expiry / 1000)
+                            end_date_str = end_time.strftime("%d.%m.%Y")
+                            
+                            # Отправляем уведомление администратору о продлении
+                            await bot.send_message(
+                                OPERATOR_CHAT_ID,
+                                f"<tg-emoji emoji-id='5406756500108501710'>🔄</tg-emoji> <b>Подписка продлена (СБП)!</b>\n\n"
+                                f"👤 Пользователь: @{callback.from_user.username} (ID: {callback.from_user.id})\n"
+                                f"<tg-emoji emoji-id='5440621591387980068'>⏰</tg-emoji> Продление на: {time_months} мес.\n"
+                                f"<tg-emoji emoji-id='5440621591387980068'>📅</tg-emoji> Новая дата: {end_date_str}\n"
+                                f"<tg-emoji emoji-id='5417924076503062111'>💰</tg-emoji> Оплата: {price_rubles}₽\n"
+                                f"Order ID: <code>{order_id}</code>",
+                                parse_mode=ParseMode.HTML
+                            )
+                            
+                            await callback.message.edit_text(
+                                f"<tg-emoji emoji-id='5416081784641168838'>✅</tg-emoji> <b>Подписка продлена!</b>\n\n"
+                                f"<tg-emoji emoji-id='5440621591387980068'>⏰</tg-emoji> Продление на: {time_months} мес.\n"
+                                f"<tg-emoji emoji-id='5417924076503062111'>💰</tg-emoji> Оплачено: {price_rubles}₽\n"
+                                f"<tg-emoji emoji-id='5440621591387980068'>📅</tg-emoji> Действует до: {end_date_str}\n\n"
+                                "Подписка успешно продлена! 🎉",
+                                reply_markup=InlineKeyboardMarkup(
+                                    inline_keyboard=[
+                                        [InlineKeyboardButton(text="Моя подписка", callback_data="subscription", style="primary")]
+                                    ]
+                                ),
+                                parse_mode=ParseMode.HTML
+                            )
+                        else:
+                            await callback.message.edit_text(
+                                "❌ Ошибка при продлении подписки. Пожалуйста, свяжитесь с поддержкой.",
+                                parse_mode=ParseMode.HTML
+                            )
+                    else:
+                        # У пользователя нет подписки - создаем новую
+                        current_time = datetime.datetime.now()
+                        end_time = current_time + datetime.timedelta(days=time_months * 31)
+                        end_timestamp = int(end_time.timestamp() * 1000)
+                        
+                        # Формируем дату в читаемом формате
+                        end_date_str = end_time.strftime("%d.%m.%Y")
+                        
+                        # Добавляем клиента в систему
+                        try:
+                            api_date = end_time.strftime("%d.%m.%Y")
+                            result = add_client(21, f"user_{callback.from_user.id}", callback.from_user.id, api_date)
+                            print(f"Client added via SBP payment: {result}")
+                            
+                            # Записываем продажу в Google Sheets
+                            add_vpn_sale(callback.from_user.id, callback.from_user.username, time_months, price_rubles)
+                            
+                            # Отправляем уведомление администратору о новой подписке
+                            await bot.send_message(
+                                OPERATOR_CHAT_ID,
+                                f"<tg-emoji emoji-id='5416081784641168838'>🆕</tg-emoji> <b>Новая подписка создана (СБП)!</b>\n\n"
+                                f"👤 Пользователь: @{callback.from_user.username} (ID: {callback.from_user.id})\n"
+                                f"<tg-emoji emoji-id='5440621591387980068'>⏰</tg-emoji> Период: {time_months} мес.\n"
+                                f"<tg-emoji emoji-id='5440621591387980068'>📅</tg-emoji> Действует до: {end_date_str}\n"
+                                f"<tg-emoji emoji-id='5417924076503062111'>💰</tg-emoji> Цена: {price_rubles}₽\n"
+                                f"Order ID: <code>{order_id}</code>",
+                                parse_mode=ParseMode.HTML
+                            )
+                            
+                            # Отправляем подтверждение пользователю
+                            await callback.message.edit_text(
+                                f"<tg-emoji emoji-id='5416081784641168838'>✅</tg-emoji> <b>Оплата успешно завершена!</b>\n\n"
+                                f"<tg-emoji emoji-id='5440621591387980068'>⏰</tg-emoji> Период: {time_months} мес.\n"
+                                f"<tg-emoji emoji-id='5417924076503062111'>💰</tg-emoji> Оплачено: {price_rubles}₽\n"
+                                f"<tg-emoji emoji-id='5440621591387980068'>📅</tg-emoji> Действует до: {end_date_str}\n\n"
+                                "Подписка активирована! 🎉",
+                                reply_markup=InlineKeyboardMarkup(
+                                    inline_keyboard=[
+                                        [InlineKeyboardButton(text="Моя подписка", callback_data="subscription", style="primary")]
+                                    ]
+                                ),
+                                parse_mode=ParseMode.HTML
+                            )
+                            
+                        except Exception as e:
+                            print(f"Error adding client via SBP payment: {e}")
+                            await callback.message.edit_text(
+                                "❌ Ошибка при активации подписки. Пожалуйста, обратитесь в поддержку.",
+                                parse_mode=ParseMode.HTML
+                            )
+                
+            except Exception as e:
+                print(f"Error processing SBP payment completion: {e}")
                 await callback.message.edit_text(
                     f"<tg-emoji emoji-id='5416081784641168838'>✅</tg-emoji> <b>Оплата подтверждена!</b>\n\n"
                     f"Спасибо за оплату. Оператор скоро активирует вашу подписку.",
                     parse_mode=ParseMode.HTML
                 )
-            except Exception:
-                pass
             
             # Уведомляем оператора о подтверждении от пользователя
             await bot.send_message(
