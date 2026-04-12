@@ -636,6 +636,45 @@ async def referral_command(message: types.Message):
         parse_mode=ParseMode.HTML
     )
 
+async def remove_from_cantfree_local(user_id: int):
+    """Удаляет пользователя из списка CantFree"""
+    async with AsyncSessionLocal() as session:
+        try:
+            # Ищем пользователя в таблице CantFree
+            result = await session.execute(
+                select(CantFree).where(CantFree.user_id == user_id)
+            )
+            cantfree_user = result.scalar_one_or_none()
+            
+            if cantfree_user:
+                # Удаляем пользователя
+                await session.delete(cantfree_user)
+                await session.commit()
+                return {"success": True, "message": f"Пользователь {user_id} удален из CantFree"}
+            else:
+                return {"success": False, "message": f"Пользователь {user_id} не найден в CantFree"}
+        except Exception as e:
+            await session.rollback()
+            return {"success": False, "error": str(e)}
+
+async def add_to_cantfree_local(user_id: int, username: str):
+    """Добавляет пользователя в список CantFree"""
+    async with AsyncSessionLocal() as session:
+        try:
+            # Создаем новую запись в CantFree
+            new_cantfree = CantFree(
+                user_id=user_id,
+                username=username,
+                registered_at=datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                last_active=datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            )
+            session.add(new_cantfree)
+            await session.commit()
+            return {"success": True, "message": f"Пользователь {user_id} добавлен в CantFree"}
+        except Exception as e:
+            await session.rollback()
+            return {"success": False, "error": str(e)}
+
 @router.message(Command("add_client"))
 async def add_client_command(message: types.Message):
     """Добавляет клиента по TG ID (только для админа)"""
@@ -879,27 +918,6 @@ async def trial_period_callback(callback: types.CallbackQuery):
     
     # Добавляем пользователя в CantFree (локально)
     add_result = await add_to_cantfree_local(user_tg_id, user_username)
-
-async def remove_from_cantfree_local(user_id: int):
-    """Удаляет пользователя из списка CantFree"""
-    async with AsyncSessionLocal() as session:
-        try:
-            # Ищем пользователя в таблице CantFree
-            result = await session.execute(
-                select(CantFree).where(CantFree.user_id == user_id)
-            )
-            cantfree_user = result.scalar_one_or_none()
-            
-            if cantfree_user:
-                # Удаляем пользователя
-                await session.delete(cantfree_user)
-                await session.commit()
-                return {"success": True, "message": f"Пользователь {user_id} удален из CantFree"}
-            else:
-                return {"success": False, "message": f"Пользователь {user_id} не найден в CantFree"}
-        except Exception as e:
-            await session.rollback()
-            return {"success": False, "error": str(e)}
     
     if add_result.get("success"):
         # Создаем пробную подписку на 3 дня через API
