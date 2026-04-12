@@ -361,15 +361,17 @@ def add_client(inbound_id: int, username: str, tg_id: int, date: str):
     import uuid
     universal_subId = f"{username}_{tg_id}"
     
-    # Уникальный ID для каждого inbound
-    client_id = f"{universal_subId}_{inbound_id}"
+    # Générer un identifiant unique pour chaque inbound
+    import secrets
+    random_username = secrets.token_urlsafe(8)  # 8 caractères aléatoires uniques
+    client_id = f"{random_username}_{tg_id}_{inbound_id}"
     
-    # Проверяем протокол inbound для правильных полей
+    # Vérifier le protocole de l'inbound pour les bons champs
     clients_data = get_clients()
     if not clients_data.get('success'):
         return {"error": "Failed to get current inbound data"}
     
-    # Находим нужный inbound для определения протокола
+    # Trouver le bon inbound pour déterminer le protocole
     target_inbound = None
     for inbound in clients_data.get('obj', []):
         if inbound.get('id') == inbound_id:
@@ -378,41 +380,40 @@ def add_client(inbound_id: int, username: str, tg_id: int, date: str):
     
     protocol = target_inbound.get('protocol', 'vless') if target_inbound else 'vless'
     
-    # Формируем данные клиента в зависимости от протокола
+    # Former les données du client en fonction du protocole
     if protocol == 'trojan':
-        # Для trojan нужен password вместо id
-        import secrets
-        password = secrets.token_urlsafe(16)  # Генерируем случайный пароль
+        # Pour trojan il faut un password au lieu de id
+        password = secrets.token_urlsafe(16)  # Générer un mot de passe aléatoire
         client_data = {
             "password": password,
             "flow": "",
-            "email": f"{username}_{tg_id}_{inbound_id}",  # Уникальный email для каждого inbound
+            "email": f"{random_username}_{tg_id}_{inbound_id}",  # Email unique pour chaque inbound
             "limitIp": 0,
             "totalGB": 0,
             "expiryTime": expiry_timestamp,
             "enable": True,
             "tgId": tg_id,
-            "subId": universal_subId,  # Одинаковый subId для всех inbound'ов
+            "subId": f"{random_username}_{tg_id}",  # Même subId pour tous les inbounds
             "comment": "",
             "reset": 0
         }
         print(f"[API] Creating trojan client with password: {password}")
     else:
-        # Для vless и других протоколов используем id
+        # Pour vless et autres protocoles on utilise id
         client_data = {
             "id": client_id,
             "flow": "",
-            "email": f"{username}_{tg_id}_{inbound_id}",  # Уникальный email для каждого inbound
+            "email": f"{random_username}_{tg_id}_{inbound_id}",  # Email unique pour chaque inbound
             "limitIp": 0,
             "totalGB": 0,
             "expiryTime": expiry_timestamp,
             "enable": True,
             "tgId": tg_id,
-            "subId": universal_subId,  # Одинаковый subId для всех inbound'ов
+            "subId": f"{random_username}_{tg_id}",  # Même subId pour tous les inbounds
             "comment": "",
             "reset": 0
         }
-        print(f"[API] Creating {protocol} client with id: {client_id}")
+        print(f"[API] Creating vless client with id: {client_id}")
     
     # Получаем текущие данные inbound
     clients_data = get_clients()
