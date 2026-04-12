@@ -554,7 +554,8 @@ admin_keyboard = InlineKeyboardMarkup(
         [InlineKeyboardButton(text="📞 Контакты", callback_data="admin_contacts", style="primary")],
         [InlineKeyboardButton(text="👤 Добавить клиента", callback_data="admin_add_client", style="primary")],
         [InlineKeyboardButton(text="📢 Рассылка", callback_data="admin_broadcast", style="primary")],
-        [InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_main", style="primary")]
+        [InlineKeyboardButton(text="�️ Удалить из CantFree", callback_data="admin_remove_cantfree", style="primary")],
+        [InlineKeyboardButton(text="� Назад", callback_data="back_to_main", style="primary")]
     ]
 )
 
@@ -953,6 +954,60 @@ async def select_price_callback(callback: types.CallbackQuery):
     )
 
 
+
+@router.callback_query(lambda callback: callback.data == "admin_remove_cantfree")
+async def admin_remove_cantfree_callback(callback: types.CallbackQuery):
+    await callback.answer()
+    await callback.message.delete()
+    
+    # Запрашиваем TG ID пользователя для удаления
+    await callback.message.answer(
+        "<tg-emoji emoji-id='5406756500108501710'>🗑️</tg-emoji> <b>Удаление из CantFree</b>\n\n"
+        "📝 <b>Отправьте TG ID пользователя для удаления из списка CantFree:</b>\n\n"
+        "<code>/remove_cantfree TG_ID</code>\n\n"
+        "Или просто отправьте TG ID пользователя сообщением.",
+        parse_mode=ParseMode.HTML
+    )
+
+@router.message(lambda message: message.text and message.text.startswith('/remove_cantfree'))
+async def remove_cantfree_command(message: Message):
+    # Проверяем права администратора
+    if not is_admin(message.from_user.id):
+        await message.answer("❌ У вас нет прав администратора.")
+        return
+    
+    # Получаем TG ID из команды
+    parts = message.text.split()
+    if len(parts) < 2:
+        await message.answer("❌ Неверный формат. Используйте: /remove_cantfree TG_ID")
+        return
+    
+    try:
+        tg_id = int(parts[1])
+    except ValueError:
+        await message.answer("❌ Неверный формат TG ID. Используйте только цифры.")
+        return
+    
+    # Показываем статус удаления
+    status_message = await message.answer(f"🔄 Удаляю пользователя {tg_id} из CantFree...")
+    
+    # Удаляем из CantFree
+    remove_result = await remove_from_cantfree_local(tg_id)
+    
+    if remove_result.get("success"):
+        await status_message.edit_text(
+            f"✅ <b>Пользователь удален из CantFree!</b>\n\n"
+            f"👤 TG ID: <code>{tg_id}</code>\n"
+            f"📝 Статус: {remove_result.get('message')}",
+            parse_mode=ParseMode.HTML
+        )
+    else:
+        await status_message.edit_text(
+            f"❌ <b>Ошибка при удалении</b>\n\n"
+            f"👤 TG ID: <code>{tg_id}</code>\n"
+            f"🔍 Ошибка: <code>{remove_result.get('error', 'Unknown error')}</code>",
+            parse_mode=ParseMode.HTML
+        )
 
 async def pre_checkout_handler(pre_checkout_query: PreCheckoutQuery):  
     await pre_checkout_query.answer(ok=True)
