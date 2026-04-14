@@ -1995,7 +1995,7 @@ async def notify_command(message: types.Message):
         return
     
     # Отправляем рассылку
-    result = await broadcast_to_all_users(message_text)
+    result = await broadcast_to_all_users(clean_text)
     await message.answer(f"Рассылка завершена: {result['success']} успешно, {result['errors']} ошибок")
 
 @router.callback_query(lambda callback: callback.data == "admin_contacts")
