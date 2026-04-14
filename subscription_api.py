@@ -547,8 +547,8 @@ if __name__ == "__main__":
     print("[Subscription API] Starting server...")
     print("[Subscription API] HTTPS server on port 2500")
     print("[Subscription API] HTTP server on port 2501 (for testing)")
-    
+    from config import PUBLIC_DOMAIN
     # Запускаем HTTPS сервер с SSL
     uvicorn.run(app, host="0.0.0.0", port=2500, 
-                ssl_keyfile=f"/etc/letsencrypt/live/{PANEL_DOMAIN}/privkey.pem",
-                ssl_certfile=f"/etc/letsencrypt/live/{PANEL_DOMAIN}/fullchain.pem")
+                ssl_keyfile=f"/etc/letsencrypt/live/{PUBLIC_DOMAIN}/privkey.pem",
+                ssl_certfile=f"/etc/letsencrypt/live/{PUBLIC_DOMAIN}/fullchain.pem")
