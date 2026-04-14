@@ -1994,8 +1994,13 @@ async def notify_command(message: types.Message):
         await message.answer("Используйте: /notify Ваше сообщение")
         return
     
+    print(f"[NOTIFY] Starting broadcast from admin {message.from_user.id}")
+    print(f"[NOTIFY] Message text: {clean_text[:100]}{'...' if len(clean_text) > 100 else ''}")
+    
     # Отправляем рассылку
     result = await broadcast_to_all_users(clean_text)
+    
+    print(f"[NOTIFY] Broadcast completed: {result['success']} successful, {result['errors']} errors")
     await message.answer(f"Рассылка завершена: {result['success']} успешно, {result['errors']} ошибок")
 
 @router.callback_query(lambda callback: callback.data == "admin_contacts")
