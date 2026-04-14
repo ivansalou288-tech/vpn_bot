@@ -1982,6 +1982,22 @@ async def admin_info_callback(callback: types.CallbackQuery):
             parse_mode=ParseMode.HTML
         )
 
+@router.message(Command("notify"))
+async def notify_command(message: types.Message):
+    if not is_admin(message.from_user.id):
+        return
+    
+    # Получаем текст после команды
+    message_text = message.html_text.replace('/notify', '').strip()
+    clean_text = message_text.replace('emoji_id=', 'emoji-id=')
+    if not clean_text:
+        await message.answer("Используйте: /notify Ваше сообщение")
+        return
+    
+    # Отправляем рассылку
+    result = await broadcast_to_all_users(message_text)
+    await message.answer(f"Рассылка завершена: {result['success']} успешно, {result['errors']} ошибок")
+
 @router.callback_query(lambda callback: callback.data == "admin_contacts")
 async def admin_contacts_callback(callback: types.CallbackQuery):
     await callback.answer()
