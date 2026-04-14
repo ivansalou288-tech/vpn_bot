@@ -10,7 +10,7 @@ def _env(name: str, default: str) -> str:
 
 
 # Domain where 3x-ui panel is reachable (used by public API server too)
-PANEL_DOMAIN ="panel.ezh-dev.ru"
+PANEL_DOMAIN ="www.ezh-dev.ru"
 
 # Optional "location" / prefix path in 3x-ui panel URL (e.g. fHvt2YpAP8)
 PANEL_PATH = "CJ7iS9lelb"
@@ -26,7 +26,7 @@ PANEL_SCHEME = "https"
 PANEL_BASE_URL = f"{PANEL_SCHEME}://{PANEL_DOMAIN}/{PANEL_PATH}"
 
 # Public base URL used in user-facing links (subscriptions, landing pages, etc.)
-PUBLIC_DOMAIN = "www.ezh-dev.ru"
+PUBLIC_DOMAIN = "panel.ezh-dev.ru"
 PUBLIC_SCHEME = "https"
 PUBLIC_BASE_URL = f"{PUBLIC_SCHEME}://{PUBLIC_DOMAIN}"
 
