@@ -6,7 +6,9 @@ import datetime
 import time
 from urllib.parse import quote
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-BASE_URL = 'https://www.ezhqpy.ru/fHvt2YpAP8'
+from config import PANEL_BASE_URL
+
+BASE_URL = PANEL_BASE_URL
 
 import secret
 

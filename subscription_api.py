@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 import api
 import sys
 import os
+from config import PANEL_DOMAIN, webhook_url
 
 # Add parent directory to path to import main
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -246,7 +247,7 @@ async def trigger_webhook_manual(order_id: str):
             def __init__(self, json_data):
                 self._json_data = json_data
                 self.client = type('Client', (), {'host': 'manual_trigger'})()
-                self.url = "https://www.ezhqpy.ru:2500/payment/webhook"
+                self.url = webhook_url()
                 self.headers = {"content-type": "application/json"}
             
             async def json(self):
@@ -298,7 +299,7 @@ async def payment_webhook(request: Request):
         data = await request.json()
         print(f"[PayCore Webhook] ========== PARSED WEBHOOK DATA ==========")
         print(f"[PayCore Webhook] Data: {data}")
-        print(f"[PayCore Webhook] Webhook URL validation: https://www.ezhqpy.ru:2500/payment/webhook")
+        print(f"[PayCore Webhook] Webhook URL validation: {webhook_url()}")
         
         order_id = data.get("order_id")
         amount = data.get("amount")
@@ -549,5 +550,5 @@ if __name__ == "__main__":
     
     # Запускаем HTTPS сервер с SSL
     uvicorn.run(app, host="0.0.0.0", port=2500, 
-                ssl_keyfile='/etc/letsencrypt/live/panel.ezhqpy.ru/privkey.pem', 
-                ssl_certfile='/etc/letsencrypt/live/panel.ezhqpy.ru/fullchain.pem')
+                ssl_keyfile=f"/etc/letsencrypt/live/{PANEL_DOMAIN}/privkey.pem",
+                ssl_certfile=f"/etc/letsencrypt/live/{PANEL_DOMAIN}/fullchain.pem")

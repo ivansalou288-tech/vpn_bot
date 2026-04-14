@@ -14,6 +14,7 @@ import sys
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from api import add_client, renew_subscription
 from api_sheets import add_vpn_sale
+from config import webhook_url
 
 # Импортируем aiogram для отправки сообщений
 from aiogram import Bot
@@ -23,7 +24,7 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 # Получаем токен из переменной окружения или используем дефолтный
 PAYCORE_API_KEY ='paycore__kzCrJ9vpN0pF7dkM%lc2D5V7/rKfbbV^ftafi%PXhH^='
 PAYCORE_API_URL = "https://pay.pay-core.ru/api/init"
-WEBHOOK_URL = 'https://panel.ezhqpy.ru:2500/payment/webhook'
+WEBHOOK_URL = webhook_url()
 BOT_TOKEN = "8358697144:AAGppsqXjG9S08nGLUpghL-jUfTz9H4gj58"
 OPERATOR_CHAT_ID = [1240656726, 1401086794]
 
@@ -117,7 +118,7 @@ def create_paycore_payment(amount: float, description: str, user_id: int, userna
     print(f"[PayCore] Request URL: {PAYCORE_API_URL}")
     print(f"[PayCore] Request headers: {headers}")
     print(f"[PayCore] Request data: {data}")
-    print(f"[PayCore] Webhook accessibility check: https://www.ezhqpy.ru:2500/payment/webhook")
+    print(f"[PayCore] Webhook accessibility check: {webhook_url()}")
     
     try:
         response = requests.post(PAYCORE_API_URL, json=data, headers=headers, timeout=30)
