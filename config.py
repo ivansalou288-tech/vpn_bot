@@ -14,7 +14,7 @@ PANEL_DOMAIN ="www.ezh-dev.ru"
 PUBLIC_DOMAIN = "panel.ezh-dev.ru"
 # Optional "location" / prefix path in 3x-ui panel URL (e.g. fHvt2YpAP8)
 PANEL_PATH = "CJ7iS9lelb"
-
+SUB_PAGE_PATH = "DmJx9ZO1Or"
 # Scheme and ports for your FastAPI subscription service (not the 3x-ui panel)
 SUBSCRIPTION_API_SCHEME = "https"
 SUBSCRIPTION_API_HOST = PUBLIC_DOMAIN

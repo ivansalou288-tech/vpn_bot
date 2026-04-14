@@ -25,7 +25,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from api import add_client, getSubById, check_cantfree, add_to_cantfree, dell_client, get_clients, renew_subscription, convert_timestamp_to_human_readable
 from api_sheets import add_vpn_sale
 from payment_api import create_paycore_payment, get_payment_status, set_bot_instance, update_payment_message_id
-from config import subscription_api_base_url, PANEL_DOMAIN
+from config import subscription_api_base_url, PANEL_DOMAIN, SUB_PAGE_PATH
 
 OPERATOR_CHAT_ID = 1240656726
 
@@ -833,7 +833,7 @@ async def subscription_callback(callback: types.CallbackQuery):
         if is_enabled:
             subscription_keyboard = InlineKeyboardMarkup(
                 inline_keyboard=[
-                    [InlineKeyboardButton(text="Использовать", url=f"https://www.ezhqpy.ru/0QmoakBn0d/index.html?name={sub_id}", style="primary", icon_custom_emoji_id='5271604874419647061')],
+                    [InlineKeyboardButton(text="Использовать", url=f"https://{PANEL_DOMAIN}/{SUB_PAGE_PATH}/index.html?name={sub_id}", style="primary", icon_custom_emoji_id='5271604874419647061')],
                     [InlineKeyboardButton(text="Продлить подписку", callback_data="renew_subscription", style="primary", icon_custom_emoji_id='5231012545799666522')],
                     # [instruction_btn],
                     [InlineKeyboardButton(text="Назад", callback_data="main_menu", style="danger")]
