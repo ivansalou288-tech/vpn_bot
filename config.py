@@ -13,7 +13,7 @@ def _env(name: str, default: str) -> str:
 PANEL_DOMAIN ="panel.ezh-dev.ru"
 
 # Optional "location" / prefix path in 3x-ui panel URL (e.g. fHvt2YpAP8)
-PANEL_PATH = "fHvt2YpAP8"
+PANEL_PATH = "CJ7iS9lelb"
 
 # Scheme and ports for your FastAPI subscription service (not the 3x-ui panel)
 SUBSCRIPTION_API_SCHEME = "https"
