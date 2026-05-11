@@ -684,10 +684,7 @@ async def add_to_cantfree_local(user_id: int, username: str):
         try:
             # Создаем новую запись в CantFree
             new_cantfree = CantFree(
-                user_id=user_id,
-                username=username,
-                registered_at=datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                last_active=datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                user_id=user_id
             )
             session.add(new_cantfree)
             await session.commit()
