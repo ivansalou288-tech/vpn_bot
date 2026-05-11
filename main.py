@@ -89,6 +89,19 @@ async def get_contact(contact_id: int = 1):
         contact = result.scalar_one_or_none()
         return contact.value if contact else "Контакты не найдены"
 
+async def check_cantfree_local(user_id: int):
+    """Проверяет есть ли пользователь в CantFree (локальная версия)"""
+    async with AsyncSessionLocal() as session:
+        try:
+            result = await session.execute(
+                select(CantFree).where(CantFree.user_id == user_id)
+            )
+            cantfree_user = result.scalar_one_or_none()
+            return {"exists": cantfree_user is not None}
+        except Exception as e:
+            print(f"Error checking CantFree: {e}")
+            return {"exists": False}
+
 # Асинхронная функция для создания/обновления info
 async def create_or_update_info(value: str, info_id: int = 1):
     async with AsyncSessionLocal() as session:
@@ -333,71 +346,57 @@ scheduler = AsyncIOScheduler()
 sent_reminders = {}  # {tg_id: {"day": timestamp, "hour": timestamp}
 
 # Словарь для отслеживания рефералов
-referral_bonus_given = {}  # {tg_id: True}
+referral_bonus_given = {}  # {referrer_id_user_id: True}
 
 async def handle_referral_bonus(user_id: int, referrer_id: int):
     """Обрабатывает реферальный бонус"""
     try:
         # Проверяем, не получал ли реферер уже бонус за этого пользователя
-        if referrer_id in referral_bonus_given:
+        # Используем словарь для отслеживания пар (реферер, новый_пользователь)
+        pair_key = f"{referrer_id}_{user_id}"
+        if pair_key in referral_bonus_given:
             return
         
-        # Проверяем подписку реферала
-        subscription_info, status = await get_subscription_info(referrer_id)
+        # Проверяем НОВОГО пользователя на наличие в CantFree (для предотвращения абуза)
+        cantfree_result = check_cantfree(user_id)
         
-        if status == "has_subscription":
-            # У реферала есть подписка - добавляем 2 дня к подписке реферала
-            await add_referral_days_to_user(referrer_id, 2)
-            
-            # Отправляем уведомление рефералу
-            await bot.send_message(
-                referrer_id,
-                f"<tg-emoji emoji-id='5416081784641168838'>🎉</tg-emoji> <b>Поздравляем! Вы получили бонус!</b>\n\n"
-                f"По вашей ссылке зарегистрировался новый пользователь.\n"
-                f"<tg-emoji emoji-id='5440621591387980068'>🎁</tg-emoji> Вам начислено: <b>2 дня</b> к подписке!\n\n"
-                "Спасибо за привлечение новых пользователей! 🚀",
-                parse_mode=ParseMode.HTML
-            )
-            
-            # Отправляем уведомление новому пользователю
-            await bot.send_message(
-                user_id,
-                f"<tg-emoji emoji-id='5416081784641168838'>🎉</tg-emoji> <b>Добро пожаловать!</b>\n\n"
-                f"Вы перешли по реферальной ссылке.\n"
-                f"<tg-emoji emoji-id='5417924076503062111'>💰</tg-emoji> Ваш реферер получил бонус за вашу регистрацию!\n\n"
-                "Спасибо, что выбрали наш сервис! 🚀",
-                parse_mode=ParseMode.HTML
-            )
-            
-        else:
-            # У реферала нет подписки - даем подписку на 2 дня рефералу
-            await add_referral_days_to_user(referrer_id, 2)
-            
-            # Отправляем уведомление рефералу
-            await bot.send_message(
-                referrer_id,
-                f"<tg-emoji emoji-id='5416081784641168838'>🎉</tg-emoji> <b>Поздравляем! Вы получили бонус!</b>\n\n"
-                f"По вашей ссылке зарегистрировался новый пользователь.\n"
-                f"<tg-emoji emoji-id='5440621591387980068'>🎁</tg-emoji> Вам начислена подписка на <b>2 дня</b>!\n\n"
-                "Спасибо за привлечение новых пользователей! 🚀",
-                parse_mode=ParseMode.HTML
-            )
-            
-            # Отправляем уведомление новому пользователю
-            await bot.send_message(
-                user_id,
-                f"<tg-emoji emoji-id='5416081784641168838'>🎉</tg-emoji> <b>Добро пожаловать!</b>\n\n"
-                f"Вы перешли по реферальной ссылке.\n"
-                f"<tg-emoji emoji-id='5417924076503062111'>💰</tg-emoji> Ваш реферер получил бонус за вашу регистрацию!\n\n"
-                "Спасибо, что выбрали наш сервис! 🚀",
-                parse_mode=ParseMode.HTML
-            )
+        if cantfree_result.get("exists") == True:
+            # Новый пользователь уже в CantFree - не даем бонус
+            print(f"[REFERRAL] User {user_id} is in CantFree - no bonus for referrer {referrer_id}")
+            return
         
-        # Помечаем, что бонус выдан рефереру
-        referral_bonus_given[referrer_id] = True
+        # Добавляем НОВОГО пользователя в CantFree, чтобы предотвратить повторные бонусы
+        await add_to_cantfree_local(user_id, f"user_{user_id}")
+        
+        # Даем бонус рефереру - добавляем/продлеваем подписку на 2 дня
+        await add_referral_days_to_user(referrer_id, 2)
+        
+        # Отправляем уведомление рефереру
+        await bot.send_message(
+            referrer_id,
+            f"<tg-emoji emoji-id='5416081784641168838'>🎉</tg-emoji> <b>Поздравляем! Вы получили бонус!</b>\n\n"
+            f"По вашей ссылке зарегистрировался новый пользователь.\n"
+            f"<tg-emoji emoji-id='5440621591387980068'>🎁</tg-emoji> Вам начислено: <b>2 дня</b> к подписке!\n\n"
+            "Спасибо, что приглашаете друзей! 🚀",
+            parse_mode=ParseMode.HTML
+        )
+        
+        # Отправляем уведомление новому пользователю
+        await bot.send_message(
+            user_id,
+            f"<tg-emoji emoji-id='5416081784641168838'>🎉</tg-emoji> <b>Добро пожаловать!</b>\n\n"
+            f"Вы перешли по реферальной ссылке.\n"
+            f"<tg-emoji emoji-id='5417924076503062111'>💰</tg-emoji> Ваш реферер получил бонус за вашу регистрацию!\n\n"
+            "Спасибо, что выбрали наш сервис! 🚀",
+            parse_mode=ParseMode.HTML
+        )
+        
+        # Помечаем, что бонус выдан за эту пару пользователей
+        referral_bonus_given[pair_key] = True
+        print(f"[REFERRAL] Bonus given to referrer {referrer_id} for new user {user_id}")
         
     except Exception as e:
-        pass
+        print(f"[REFERRAL] Error handling referral bonus: {e}")
 
 async def add_referral_days_to_user(user_id: int, days: int):
     """Добавляет дни к подписке пользователя или создает новую подписку"""
@@ -857,7 +856,7 @@ async def subscription_callback(callback: types.CallbackQuery):
             subscription_keyboard = None
     elif status == "no_subscription":
         # Проверяем есть ли пользователь в CantFree (локально)
-        cantfree_result = check_cantfree(user_tg_id)
+        cantfree_result = await check_cantfree_local(user_tg_id)
         
         if cantfree_result.get("exists") == False:
             # Пользователя нет в CantFree - предлагаем пробный период
@@ -921,7 +920,7 @@ async def trial_period_callback(callback: types.CallbackQuery):
     user_username = callback.from_user.username
     
     # Проверяем еще раз что пользователя нет в CantFree (локально)
-    cantfree_result = check_cantfree(user_tg_id)
+    cantfree_result = await check_cantfree_local(user_tg_id)
     
     if cantfree_result.get("exists") == True:
         # Пользователь уже использовал пробный период
