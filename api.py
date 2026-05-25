@@ -353,11 +353,18 @@ def panel_add_inbound_client(session, inbound_id, client_dict, protocol):
     elif protocol == "trojan":
         fragment.setdefault("fallbacks", [])
     body = {"id": inbound_id, "settings": json.dumps(fragment)}
-    r = session.post(f"{BASE_URL}/panel/api/inbounds/addClient", json=body, verify=False)
+    url = f"{BASE_URL}/panel/api/inbounds/addClient"
+    print(f"[API] POST запрос: {url}")
+    print(f"[API] Body: {json.dumps(body, indent=2)}")
+    r = session.post(url, json=body, verify=False)
+    print(f"[API] Ответ панели - статус: {r.status_code}")
+    print(f"[API] Ответ панели - содержимое: {r.text}")
     if r.status_code != 200:
         return {"success": False, "error": f"HTTP {r.status_code}", "msg": r.text}
     try:
-        return r.json()
+        result = r.json()
+        print(f"[API] Парсед JSON ответ: {json.dumps(result, indent=2)}")
+        return result
     except json.JSONDecodeError:
         return {"success": False, "msg": r.text}
 
@@ -603,12 +610,19 @@ def add_client(inbound_id: int, username: str, tg_id: int, date: str):
     if session is None:
         return {"error": err or "Login failed"}
 
+    print(f"[API] Подготовка клиента: email={email}, tg_id={tg_id}, sub_id={sub_id}")
+    print(f"[API] Данные клиента: {json.dumps(client_data, indent=2)}")
+    
     for old in find_clients_for_tg_on_inbound(settings_obj, tg_id, inbound_id):
         em = old.get("email")
         if em:
+            print(f"[API] Удаление старого клиента: {em}")
             panel_del_client_by_email(session, inbound_id, em)
 
-    return panel_add_inbound_client(session, inbound_id, client_data, protocol)
+    print(f"[API] Отправка клиента на панель...")
+    result = panel_add_inbound_client(session, inbound_id, client_data, protocol)
+    print(f"[API] Итоговый результат: {json.dumps(result, indent=2)}")
+    return result
 
 def check_cantfree(tg_id):
     """Проверяет есть ли пользователь в CantFree"""
