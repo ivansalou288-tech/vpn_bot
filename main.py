@@ -27,6 +27,7 @@ from api_sheets import add_vpn_sale
 from payment_api import create_paycore_payment, get_payment_status, set_bot_instance, update_payment_message_id
 from config import subscription_api_base_url, PANEL_DOMAIN, SUB_PAGE_PATH
 
+
 OPERATOR_CHAT_ID = 1240656726
 
 API_BASE_URL = subscription_api_base_url()
@@ -635,6 +636,9 @@ async def start(message: types.Message):
             "Выберите одну из опций ниже:",
             reply_markup=keyboard
         )
+
+
+
 
 @router.message(Command("referral"))
 async def referral_command(message: types.Message):

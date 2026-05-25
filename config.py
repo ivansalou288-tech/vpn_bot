@@ -11,10 +11,11 @@ def _env(name: str, default: str) -> str:
 
 # Domain where 3x-ui panel is reachable (used by public API server too)
 PANEL_DOMAIN ="panel.ezh-dev.ru"
-PUBLIC_DOMAIN = "www.ezh-dev.ru"
+PUBLIC_DOMAIN = "panel.ezh-dev.ru"
+PANEL_PORT=17211
 # Optional "location" / prefix path in 3x-ui panel URL (e.g. fHvt2YpAP8)
-PANEL_PATH = "L4K0ROpat8"
-SUB_PAGE_PATH = "CuVFlFBl3e"
+PANEL_PATH = "fJRVDuTcoinPdJ4Dnd"
+SUB_PAGE_PATH = "sub"
 # Scheme and ports for your FastAPI subscription service (not the 3x-ui panel)
 SUBSCRIPTION_API_SCHEME = "https"
 #SUBSCRIPTION_API_HOST = PUBLIC_DOMAIN
@@ -23,7 +24,7 @@ SUBSCRIPTION_API_HTTP_PORT = 2501
 
 # Base URL to talk to 3x-ui panel API
 PANEL_SCHEME = "https"
-PANEL_BASE_URL = f"{PANEL_SCHEME}://{PANEL_DOMAIN}/{PANEL_PATH}"
+PANEL_BASE_URL = f"{PANEL_SCHEME}://{PANEL_DOMAIN}:{PANEL_PORT}/{PANEL_PATH}"
 
 # Public base URL used in user-facing links (subscriptions, landing pages, etc.)
 PUBLIC_DOMAIN = "panel.ezh-dev.ru"
@@ -42,4 +43,6 @@ def subscription_api_base_url() -> str:
 
 def webhook_url() -> str:
     return f"{subscription_api_base_url()}/payment/webhook"
+
+
 
