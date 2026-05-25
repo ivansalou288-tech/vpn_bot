@@ -20,5 +20,5 @@ def login():
     }
 
     response = requests.post(f"{BASE_URL}/login", json=admin_login, verify=False)
-    print(response.json())
-login()
+    return response.json()
+print(login())
