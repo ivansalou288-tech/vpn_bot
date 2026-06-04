@@ -402,11 +402,10 @@ def _apply_expiry_to_user_inbounds(tg_id: int, new_expiry_ms: int, inbound_ids=N
         )
         results.append({"inbound_id": iid, "update_result": upd})
 
+    # Считаем операцию успешной если обновлено хотя бы на одном инбаунде
     updated_rows = [r for r in results if "update_result" in r]
-    if not updated_rows:
-        success = False
-    else:
-        success = all(r["update_result"].get("success") for r in updated_rows)
+    successfully_updated = [r for r in updated_rows if r["update_result"].get("success")]
+    success = len(successfully_updated) > 0
 
     return {"success": success, "results": results}
 

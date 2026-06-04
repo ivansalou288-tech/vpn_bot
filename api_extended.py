@@ -16,28 +16,45 @@ import secrets
 
 def add_client_to_all_inbounds(username: str, tg_id: int, date: str):
     """
-    Один общий subId на всех 4 инбаундах: subId = {prefix}_{tg_id}.
+    Один общый subId на всех инбаундах: subId = {prefix}_{tg_id}.
     Разные email на каждом: {prefix}_{tg_id}_{inbound_id}.
     Префикс один раз на все вызовы (не случайный на каждый inbound).
+    Добавляет клиента только на СУЩЕСТВУЮЩИЕ инбаунды.
     """
     sub_prefix = secrets.token_urlsafe(8)
     universal_sub_id = f"{sub_prefix}_{tg_id}"
 
+    # Получаем список существующих инбаундов
+    clients_data = get_clients()
+    if not clients_data.get("success"):
+        return {
+            "success": False,
+            "message": "Failed to get inbounds list",
+            "subId": universal_sub_id,
+            "client_prefix": sub_prefix,
+            "results": [],
+        }
+    
+    existing_inbound_ids = [inbound.get("id") for inbound in clients_data.get("obj", [])]
+    
     results = []
-    all_ok = True
-    for inbound_id in range(1, 5):
+    successfully_added = 0
+    for inbound_id in existing_inbound_ids:
         print(f"[API] Adding client to inbound {inbound_id} subId={universal_sub_id}...")
         result = add_client(inbound_id, sub_prefix, tg_id, date)
         results.append({"inbound_id": inbound_id, "result": result})
         if result.get("success"):
             print(f"[API] Successfully added client to inbound {inbound_id}")
+            successfully_added += 1
         else:
-            all_ok = False
             print(f"[API] Failed to add client to inbound {inbound_id}: {result}")
 
+    # Считаем операцию успешной если клиент добавлен хотя бы на один инбаунд
+    success = successfully_added > 0
+
     return {
-        "success": all_ok,
-        "message": "Client added to all inbounds",
+        "success": success,
+        "message": f"Client added to {successfully_added}/{len(existing_inbound_ids)} inbounds" if success else "Failed to add client to any inbound",
         "subId": universal_sub_id,
         "client_prefix": sub_prefix,
         "results": results,
