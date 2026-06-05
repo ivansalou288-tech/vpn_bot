@@ -594,7 +594,7 @@ def add_client(inbound_id: int, username: str, tg_id: int, date: str):
             }
             print(f"[API] Отправляем вебхук: POST {webhook_url}")
             print(f"[API] Payload: {json.dumps(webhook_payload)}")
-            webhook_response = requests.post(webhook_url, json=webhook_payload, timeout=10, verify=False)
+            webhook_response = requests.post(webhook_url, json=webhook_payload, timeout=60, verify=False)
             print(f"[API] Вебхук ответ статус: {webhook_response.status_code}")
             print(f"[API] Вебхук ответ: {webhook_response.text}")
         except requests.exceptions.Timeout:
