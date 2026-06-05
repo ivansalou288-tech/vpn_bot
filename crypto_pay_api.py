@@ -36,12 +36,11 @@ async def create_crypto_invoice(
         "amount": amount_usd,  # Сумма в USDT
         "description": description,
         "hidden_message": f"Оплата VPN подписки для пользователя {user_id}",
-        "paid_btn_name": "openLink",  # Кнопка после оплаты
-        "paid_btn_url": "https://t.me/your_bot",  # URL кнопки (можно заменить на вашего бота)
+        "paid_btn_name": "openBot",  # Кнопка после оплаты - открыть бота
+        "paid_btn_url": "https://t.me/CryptoBot",  # URL кнопки
         "payload": f"{user_id}:{time_months}:{1 if is_renewal else 0}",  # Дополнительные данные
         "allow_comments": False,
-        "allow_anonymous": False,
-        "expires_at": None  # Без ограничения по времени
+        "allow_anonymous": False
     }
     
     print(f"[CryptoBot] Creating invoice: amount_rub={amount_rub}, amount_usd={amount_usd}, user_id={user_id}")
