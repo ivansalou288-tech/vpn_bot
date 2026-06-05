@@ -25,6 +25,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from api import add_client, getSubById, check_cantfree, add_to_cantfree, dell_client, get_clients, renew_subscription, convert_timestamp_to_human_readable
 from api_sheets import add_vpn_sale
 from payment_api import create_paycore_payment, get_payment_status, set_bot_instance, update_payment_message_id
+from crypto_pay_api import create_crypto_invoice, get_crypto_invoice_status, convert_rub_to_usd
 from config import subscription_api_base_url, PANEL_DOMAIN, SUB_PAGE_PATH
 
 
@@ -1014,9 +1015,11 @@ async def select_price_callback(callback: types.CallbackQuery):
     months_text = "год" if time_months == 12 else f"{time_months} месяц{'а' if time_months > 1 and time_months < 5 else 'ев'}"
     
     # Создаем кнопку оплаты
+    amount_usd = convert_rub_to_usd(price_rubles)
     pay_keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text="Оплата по СБП", callback_data=f"pay_sbp_{time_months}_{price_rubles}", style="primary")],
+            [InlineKeyboardButton(text=f"CryptoBot ({amount_usd} USDT)", callback_data=f"pay_crypto_{time_months}_{price_rubles}", style="primary")],
             [InlineKeyboardButton(text="Оплатить звездами", callback_data=f"pay_stars_{time_months}_{price_rubles}", style="primary")]
         ]
     )
@@ -1246,14 +1249,196 @@ async def pay_sbp_callback(callback: types.CallbackQuery):
     
     # Извлекаем данные из callback_data
     parts = callback.data.split("_")
-    time_months = int(parts[2])  # "pay_sbp_1_200" -> parts[2] = "1"
-    price_rubles = int(parts[3])  # "pay_sbp_1_200" -> parts[3] = "200"
+    time_months = int(parts[2])
+    price_rubles = int(parts[3])
     
     user_id = callback.from_user.id
     username = callback.from_user.username
     
-    # Перенаправляем в функцию обработки СБП (доступно всем)
+    # Перенаправляем в функцию обработки СБП
     await process_sbp_payment(callback.message, user_id, username, time_months, price_rubles, is_renewal=False)
+
+
+@router.callback_query(lambda callback: callback.data.startswith("pay_crypto_"))
+async def pay_crypto_callback(callback: types.CallbackQuery):
+    """Обработка оплаты через CryptoBot"""
+    await callback.answer()
+    
+    # Извлекаем данные из callback_data
+    parts = callback.data.split("_")
+    time_months = int(parts[2])
+    price_rubles = int(parts[3])
+    
+    user_id = callback.from_user.id
+    username = callback.from_user.username or "Unknown"
+    
+    # Формируем текст времени
+    months_text = "год" if time_months == 12 else f"{time_months} месяц{'а' if time_months > 1 and time_months < 5 else 'ев'}"
+    
+    # Конвертируем сумму
+    amount_usd = convert_rub_to_usd(price_rubles)
+    
+    print(f"[CryptoBot] Starting payment: user={user_id}, amount_rub={price_rubles}, amount_usd={amount_usd}")
+    
+    # Создаём инвойс в CryptoBot
+    result = await create_crypto_invoice(
+        amount_rub=price_rubles,
+        description=f"Покупка VPN на {months_text}",
+        user_id=user_id,
+        time_months=time_months,
+        is_renewal=False
+    )
+    
+    if result.get("success"):
+        invoice_id = result.get("invoice_id")
+        payment_url = result.get("bot_invoice_url") or result.get("mini_app_invoice_url")
+        
+        await callback.message.answer(
+            f"<tg-emoji emoji-id='5424972470023104089'>💎</tg-emoji> <b>Оплата через CryptoBot</b>\n\n"
+            f"<tg-emoji emoji-id='5440621591387980068'>⏰</tg-emoji> Период: {months_text}\n"
+            f"<tg-emoji emoji-id='5417924076503062111'>💰</tg-emoji> Сумма: {price_rubles}₽ ({amount_usd} USDT)\n\n"
+            f"<tg-emoji emoji-id='5416081784641168838'>⚠️</tg-emoji> <b>Важно:</b>\n"
+            f"После оплаты нажмите 'Проверить оплату'\n\n"
+            f"<tg-emoji emoji-id='5440621591387980068'>⏳</tg-emoji> Оплата будет автоматически проверена.",
+            reply_markup=InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [InlineKeyboardButton(text=f"Перейти к оплате ({amount_usd} USDT)", url=payment_url, style="success")],
+                    [InlineKeyboardButton(text="Проверить оплату", callback_data=f"crypto_check_{invoice_id}_{time_months}_{price_rubles}", style="primary")]
+                ]
+            ),
+            parse_mode=ParseMode.HTML
+        )
+    else:
+        error_msg = result.get('error', 'Неизвестная ошибка')
+        await callback.message.answer(
+            f"<tg-emoji emoji-id='5411225014148014586'>❌</tg-emoji> <b>Ошибка создания платежа</b>\n\n"
+            f"Не удалось создать платёж: {error_msg}\n\n"
+            "Пожалуйста, попробуйте позже.",
+            parse_mode=ParseMode.HTML
+        )
+
+
+@router.callback_query(lambda callback: callback.data.startswith("crypto_check_"))
+async def crypto_check_callback(callback: types.CallbackQuery):
+    """Проверка статуса оплаты CryptoBot"""
+    await callback.answer()
+    
+    # Извлекаем данные
+    parts = callback.data.split("_")
+    invoice_id = int(parts[2])
+    time_months = int(parts[3])
+    price_rubles = int(parts[4])
+    
+    # Формируем текст времени
+    months_text = "год" if time_months == 12 else f"{time_months} месяц{'а' if time_months > 1 and time_months < 5 else 'ев'}"
+    
+    # Проверяем статус инвойса
+    result = await get_crypto_invoice_status(invoice_id)
+    
+    if result.get("success"):
+        status = result.get("status")
+        
+        if status == "paid":
+            # Платёж подтверждён
+            subscription_info, sub_status = await get_subscription_info(callback.from_user.id)
+            
+            if sub_status == "has_subscription":
+                # Продлеваем подписку
+                renew_result = renew_subscription(callback.from_user.id, time_months)
+                
+                if renew_result.get('success'):
+                    new_expiry = renew_result.get('new_expiry')
+                    end_time = datetime.datetime.fromtimestamp(new_expiry / 1000)
+                    end_date_str = end_time.strftime("%d.%m.%Y")
+                    
+                    await callback.message.edit_text(
+                        f"<tg-emoji emoji-id='5416081784641168838'>✅</tg-emoji> <b>Подписка продлена!</b>\n\n"
+                        f"<tg-emoji emoji-id='5440621591387980068'>⏰</tg-emoji> Продление на: {months_text}\n"
+                        f"<tg-emoji emoji-id='5417924076503062111'>💰</tg-emoji> Оплачено: {price_rubles}₽\n"
+                        f"<tg-emoji emoji-id='5440621591387980068'>📅</tg-emoji> Действует до: {end_date_str}\n\n"
+                        "Подписка успешно продлена! 🎉",
+                        reply_markup=InlineKeyboardMarkup(
+                            inline_keyboard=[
+                                [InlineKeyboardButton(text="Моя подписка", callback_data="subscription", style="primary")]
+                            ]
+                        ),
+                        parse_mode=ParseMode.HTML
+                    )
+                    
+                    # Уведомление админу
+                    await bot.send_message(
+                        OPERATOR_CHAT_ID,
+                        f"<tg-emoji emoji-id='5406756500108501710'>🔄</tg-emoji> <b>Подписка продлена (CryptoBot)!</b>\n\n"
+                        f"👤 Пользователь: @{callback.from_user.username} (ID: {callback.from_user.id})\n"
+                        f"<tg-emoji emoji-id='5440621591387980068'>⏰</tg-emoji> Продление на: {time_months} мес.\n"
+                        f"<tg-emoji emoji-id='5417924076503062111'>💰</tg-emoji> Оплата: {price_rubles}₽ ({convert_rub_to_usd(price_rubles)} USDT)",
+                        parse_mode=ParseMode.HTML
+                    )
+                else:
+                    await callback.message.edit_text(
+                        "❌ Ошибка при продлении подписки. Свяжитесь с поддержкой.",
+                        parse_mode=ParseMode.HTML
+                    )
+            else:
+                # Создаём новую подписку
+                current_time = datetime.datetime.now()
+                end_time = current_time + datetime.timedelta(days=time_months * 31)
+                end_date_str = end_time.strftime("%d.%m.%Y")
+                
+                try:
+                    api_date = end_time.strftime("%d.%m.%Y")
+                    result = add_client(21, f"user_{callback.from_user.id}", callback.from_user.id, api_date)
+                    print(f"Client added via CryptoBot payment: {result}")
+                    
+                    # Записываем продажу в Google Sheets
+                    add_vpn_sale(callback.from_user.id, callback.from_user.username, time_months, price_rubles)
+                    
+                    await callback.message.edit_text(
+                        f"<tg-emoji emoji-id='5416081784641168838'>✅</tg-emoji> <b>Оплата успешно завершена!</b>\n\n"
+                        f"<tg-emoji emoji-id='5440621591387980068'>⏰</tg-emoji> Период: {months_text}\n"
+                        f"<tg-emoji emoji-id='5417924076503062111'>💰</tg-emoji> Оплачено: {price_rubles}₽ ({convert_rub_to_usd(price_rubles)} USDT)\n"
+                        f"<tg-emoji emoji-id='5440621591387980068'>📅</tg-emoji> Действует до: {end_date_str}\n\n"
+                        "Подписка активирована! 🎉",
+                        reply_markup=InlineKeyboardMarkup(
+                            inline_keyboard=[
+                                [InlineKeyboardButton(text="Моя подписка", callback_data="subscription", style="primary")]
+                            ]
+                        ),
+                        parse_mode=ParseMode.HTML
+                    )
+                    
+                    # Уведомление админу
+                    await bot.send_message(
+                        OPERATOR_CHAT_ID,
+                        f"<tg-emoji emoji-id='5416081784641168838'>🆕</tg-emoji> <b>Новая подписка (CryptoBot)!</b>\n\n"
+                        f"👤 Пользователь: @{callback.from_user.username} (ID: {callback.from_user.id})\n"
+                        f"<tg-emoji emoji-id='5440621591387980068'>⏰</tg-emoji> Период: {time_months} мес.\n"
+                        f"<tg-emoji emoji-id='5417924076503062111'>💰</tg-emoji> Оплата: {price_rubles}₽ ({convert_rub_to_usd(price_rubles)} USDT)",
+                        parse_mode=ParseMode.HTML
+                    )
+                    
+                except Exception as e:
+                    print(f"Error adding client via CryptoBot payment: {e}")
+                    await callback.message.edit_text(
+                        "❌ Ошибка при активации подписки. Свяжитесь с поддержкой.",
+                        parse_mode=ParseMode.HTML
+                    )
+        elif status == "active":
+            # Инвойс активен, ожидает оплаты
+            await callback.answer(
+                "⏳ Платёж ещё не получен. Пожалуйста, оплатите и проверьте снова.",
+                show_alert=True
+            )
+        else:
+            await callback.answer(
+                f"❌ Статус платежа: {status}. Свяжитесь с поддержкой.",
+                show_alert=True
+            )
+    else:
+        await callback.answer(
+            "❌ Не удалось проверить платёж. Попробуйте позже.",
+            show_alert=True
+        )
 
 
 async def process_sbp_payment(message, user_id, username, time_months, price_rubles, is_renewal=False):
@@ -1749,9 +1934,11 @@ async def renew_select_callback(callback: types.CallbackQuery):
     months_text = "год" if time_months == 12 else f"{time_months} месяц{'а' if time_months > 1 and time_months < 5 else 'ев'}"
     
     # Создаем кнопку оплаты
+    amount_usd = convert_rub_to_usd(price_rubles)
     pay_keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text="Оплата по СБП", callback_data=f"renew_pay_sbp_{time_months}_{price_rubles}", style="primary")],
+            [InlineKeyboardButton(text=f"CryptoBot ({amount_usd} USDT)", callback_data=f"renew_pay_crypto_{time_months}_{price_rubles}", style="primary")],
             [InlineKeyboardButton(text="Оплатить звездами", callback_data=f"renew_pay_stars_{time_months}_{price_rubles}", style="primary")]
         ]
     )
@@ -1782,14 +1969,143 @@ async def renew_pay_sbp_callback(callback: types.CallbackQuery):
     
     # Извлекаем данные из callback_data
     parts = callback.data.split("_")
-    time_months = int(parts[3])  # "renew_pay_sbp_1_200" -> parts[3] = "1"
-    price_rubles = int(parts[4])  # "renew_pay_sbp_1_200" -> parts[4] = "200"
+    time_months = int(parts[3])
+    price_rubles = int(parts[4])
     
     user_id = callback.from_user.id
     username = callback.from_user.username
     
-    # Перенаправляем в функцию обработки СБП (доступно всем)
+    # Перенаправляем в функцию обработки СБП
     await process_sbp_payment(callback.message, user_id, username, time_months, price_rubles, is_renewal=True)
+
+
+@router.callback_query(lambda callback: callback.data.startswith("renew_pay_crypto_"))
+async def renew_pay_crypto_callback(callback: types.CallbackQuery):
+    """Оплата CryptoBot для продления подписки"""
+    await callback.answer()
+    
+    # Извлекаем данные
+    parts = callback.data.split("_")
+    time_months = int(parts[3])
+    price_rubles = int(parts[4])
+    
+    user_id = callback.from_user.id
+    username = callback.from_user.username or "Unknown"
+    
+    months_text = "год" if time_months == 12 else f"{time_months} месяц{'а' if time_months > 1 and time_months < 5 else 'ев'}"
+    amount_usd = convert_rub_to_usd(price_rubles)
+    
+    print(f"[CryptoBot] Renew payment: user={user_id}, amount_rub={price_rubles}, amount_usd={amount_usd}")
+    
+    # Создаём инвойс в CryptoBot
+    result = await create_crypto_invoice(
+        amount_rub=price_rubles,
+        description=f"Продление VPN на {months_text}",
+        user_id=user_id,
+        time_months=time_months,
+        is_renewal=True
+    )
+    
+    if result.get("success"):
+        invoice_id = result.get("invoice_id")
+        payment_url = result.get("bot_invoice_url") or result.get("mini_app_invoice_url")
+        
+        await callback.message.answer(
+            f"<tg-emoji emoji-id='5424972470023104089'>💎</tg-emoji> <b>Оплата через CryptoBot</b>\n\n"
+            f"<tg-emoji emoji-id='5440621591387980068'>⏰</tg-emoji> Продление на: {months_text}\n"
+            f"<tg-emoji emoji-id='5417924076503062111'>💰</tg-emoji> Сумма: {price_rubles}₽ ({amount_usd} USDT)\n\n"
+            f"<tg-emoji emoji-id='5416081784641168838'>⚠️</tg-emoji> <b>Важно:</b>\n"
+            f"После оплаты нажмите 'Проверить оплату'\n\n"
+            f"<tg-emoji emoji-id='5440621591387980068'>⏳</tg-emoji> Оплата будет автоматически проверена.",
+            reply_markup=InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [InlineKeyboardButton(text=f"Перейти к оплате ({amount_usd} USDT)", url=payment_url, style="success")],
+                    [InlineKeyboardButton(text="Проверить оплату", callback_data=f"crypto_renew_check_{invoice_id}_{time_months}_{price_rubles}", style="primary")]
+                ]
+            ),
+            parse_mode=ParseMode.HTML
+        )
+    else:
+        error_msg = result.get('error', 'Неизвестная ошибка')
+        await callback.message.answer(
+            f"<tg-emoji emoji-id='5411225014148014586'>❌</tg-emoji> <b>Ошибка создания платежа</b>\n\n"
+            f"Не удалось создать платёж: {error_msg}\n\n"
+            "Пожалуйста, попробуйте позже.",
+            parse_mode=ParseMode.HTML
+        )
+
+
+@router.callback_query(lambda callback: callback.data.startswith("crypto_renew_check_"))
+async def crypto_renew_check_callback(callback: types.CallbackQuery):
+    """Проверка статуса оплаты CryptoBot для продления"""
+    await callback.answer()
+    
+    # Извлекаем данные
+    parts = callback.data.split("_")
+    invoice_id = int(parts[3])
+    time_months = int(parts[4])
+    price_rubles = int(parts[5])
+    
+    months_text = "год" if time_months == 12 else f"{time_months} месяц{'а' if time_months > 1 and time_months < 5 else 'ев'}"
+    
+    # Проверяем статус инвойса
+    result = await get_crypto_invoice_status(invoice_id)
+    
+    if result.get("success"):
+        status = result.get("status")
+        
+        if status == "paid":
+            # Платёж подтверждён - продлеваем подписку
+            renew_result = renew_subscription(callback.from_user.id, time_months)
+            
+            if renew_result.get('success'):
+                new_expiry = renew_result.get('new_expiry')
+                end_time = datetime.datetime.fromtimestamp(new_expiry / 1000)
+                end_date_str = end_time.strftime("%d.%m.%Y")
+                
+                await callback.message.edit_text(
+                    f"<tg-emoji emoji-id='5416081784641168838'>✅</tg-emoji> <b>Подписка продлена!</b>\n\n"
+                    f"<tg-emoji emoji-id='5440621591387980068'>⏰</tg-emoji> Продление на: {months_text}\n"
+                    f"<tg-emoji emoji-id='5417924076503062111'>💰</tg-emoji> Оплачено: {price_rubles}₽\n"
+                    f"<tg-emoji emoji-id='5440621591387980068'>📅</tg-emoji> Действует до: {end_date_str}\n\n"
+                    "Подписка успешно продлена! 🎉",
+                    reply_markup=InlineKeyboardMarkup(
+                        inline_keyboard=[
+                            [InlineKeyboardButton(text="Моя подписка", callback_data="subscription", style="primary")]
+                        ]
+                    ),
+                    parse_mode=ParseMode.HTML
+                )
+                
+                # Уведомление админу
+                await bot.send_message(
+                    OPERATOR_CHAT_ID,
+                    f"<tg-emoji emoji-id='5406756500108501710'>🔄</tg-emoji> <b>Подписка продлена (CryptoBot)!</b>\n\n"
+                    f"👤 Пользователь: @{callback.from_user.username} (ID: {callback.from_user.id})\n"
+                    f"<tg-emoji emoji-id='5440621591387980068'>⏰</tg-emoji> Продление на: {time_months} мес.\n"
+                    f"<tg-emoji emoji-id='5417924076503062111'>💰</tg-emoji> Оплата: {price_rubles}₽ ({convert_rub_to_usd(price_rubles)} USDT)",
+                    parse_mode=ParseMode.HTML
+                )
+            else:
+                await callback.message.edit_text(
+                    "❌ Ошибка при прод��ении подписки. Свяжитесь с поддержкой.",
+                    parse_mode=ParseMode.HTML
+                )
+        elif status == "active":
+            await callback.answer(
+                "⏳ Платёж ещё не получен. Пожалуйста, оплатите и проверьте снова.",
+                show_alert=True
+            )
+        else:
+            await callback.answer(
+                f"❌ Статус платежа: {status}. Свяжитесь с поддержкой.",
+                show_alert=True
+            )
+    else:
+        await callback.answer(
+            "❌ Не удалось проверить платёж. Попробуйте позже.",
+            show_alert=True
+        )
 
 @router.callback_query(lambda callback: callback.data.startswith("renew_confirm_pay_"))
 async def renew_confirm_callback(callback: types.CallbackQuery):
