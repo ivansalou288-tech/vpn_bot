@@ -9,6 +9,7 @@ from api import (
     parse_inbound_settings,
     panel_session,
     panel_del_client_by_email,
+    generate_sub_prefix,
 )
 import json
 import secrets
@@ -32,8 +33,8 @@ def add_client_to_all_inbounds(username: str, tg_id: int, date: str, sub_id: str
         sub_prefix = parts[0] if len(parts) > 1 else sub_id
         print(f"[API] Using provided sub_id: {universal_sub_id} (prefix: {sub_prefix})")
     else:
-        # Генерируем новый prefix если sub_id не передан
-        sub_prefix = username if username and username.strip() else secrets.token_urlsafe(8)
+        # Генерируем новый prefix если sub_id не передан (без буквы 't')
+        sub_prefix = username if username and username.strip() else generate_sub_prefix(8)
         universal_sub_id = f"{sub_prefix}_{tg_id}"
         print(f"[API] Generated new sub_id: {universal_sub_id} (prefix: {sub_prefix})")
 

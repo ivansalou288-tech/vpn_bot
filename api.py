@@ -5,6 +5,7 @@ import random
 import datetime
 import time
 import secrets
+import string
 from urllib.parse import quote
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 from config import PANEL_BASE_URL, PANEL_DOMAIN, PANEL_PORT, PANEL_PATH
@@ -16,6 +17,17 @@ import secret
 admn_username = secret.user
 admn_pass = secret.password
 api_token = secret.api_token
+
+
+def generate_sub_prefix(length=8):
+    """
+    Генерирует случайный prefix для sub_id без буквы 't'
+    Использует буквы и цифры, но без 't'
+    """
+    # Исключаем букву 't' и 'T' из доступных символов
+    available_chars = string.ascii_letters.replace('t', '').replace('T', '') + string.digits
+    return ''.join(secrets.choice(available_chars) for _ in range(length))
+
 
 def get_headers():
     """Return headers with Bearer token authentication"""
@@ -525,7 +537,7 @@ def add_client(inbound_id: int, username: str, tg_id: int, date: str):
         return {"error": expiry_timestamp}
 
     prefix_raw = (username or "").strip() if username is not None else ""
-    prefix = prefix_raw if prefix_raw else secrets.token_urlsafe(8)
+    prefix = prefix_raw if prefix_raw else generate_sub_prefix(8)
     sub_id = f"{prefix}_{tg_id}"
     email = f"{prefix}_{tg_id}_{inbound_id}"
     client_id = f"{prefix}_{tg_id}_{inbound_id}"

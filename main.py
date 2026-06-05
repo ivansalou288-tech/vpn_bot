@@ -956,7 +956,7 @@ async def trial_period_callback(callback: types.CallbackQuery):
             api_date = end_time.strftime("%d.%m.%Y")
             print(f"[TRIAL] Creating trial client for user {user_tg_id} with expiry {api_date}")
             from api_extended import add_client_to_all_inbounds
-            client_result = add_client_to_all_inbounds(f"trial_user_{user_tg_id}", user_tg_id, api_date)
+            client_result = add_client_to_all_inbounds(user_username or f"user_{user_tg_id}", user_tg_id, api_date)
             print(f"[TRIAL] Client creation result: {client_result}")
             
             if client_result and client_result.get('success'):

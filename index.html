@@ -27,7 +27,7 @@ document.addEventListener("DOMContentLoaded", function () {
             var templateSelect = document.getElementById("templateSelect").value;
             var customTemplateUrl = document.getElementById("customTemplateUrl").value.trim();
             var templateUrl = templateSelect === "custom" ? customTemplateUrl : templateSelect;
-            var subUrl = "https://panel.ezhqpy.ru:2096/sub/" + encodeURIComponent(username);
+            var subUrl = "https://www.ezh-dev.ru/sub/" + encodeURIComponent(username);
 
             var jsonData = {
                 "subscription": [subUrl],
@@ -41,7 +41,7 @@ document.addEventListener("DOMContentLoaded", function () {
             };
 
             var sub2sbbase64 = btoa(JSON.stringify(jsonData));
-            var sub2sb = "sing-box://import-remote-profile/?url=https://panel.ezhqpy.ru:2096/sub/convert?data=";
+            var sub2sb = "https://www.ezh-dev.ru/sub/";
             var fullUrl = sub2sb + sub2sbbase64 + "#" + encodeURIComponent(username);
             window.open(fullUrl);
         }
@@ -52,7 +52,7 @@ document.addEventListener("DOMContentLoaded", function () {
             var templateSelect = document.getElementById("templateSelect").value;
             var customTemplateUrl = document.getElementById("customTemplateUrl").value.trim();
             var templateUrl = templateSelect === "custom" ? customTemplateUrl : templateSelect;
-            var subUrl = "https://panel.ezhqpy.ru:2096/sub/" + encodeURIComponent(username);
+            var subUrl = "https://www.ezh-dev.ru/sub/" + encodeURIComponent(username);
 
             var jsonData = {
                 "subscription": [subUrl],
@@ -66,7 +66,7 @@ document.addEventListener("DOMContentLoaded", function () {
             };
 
             var sub2sbbase64 = btoa(JSON.stringify(jsonData));
-            var sub2sb = "https://panel.ezhqpy.ru:2096/sub/convert?data=";
+            var sub2sb = "https://www.ezh-dev.ru/sub/";
             var sbUrl = sub2sb + sub2sbbase64;
 
             navigator.clipboard.writeText(sbUrl).then(function () {
@@ -89,8 +89,8 @@ document.addEventListener("DOMContentLoaded", function () {
 			}
 			const baseURL = window.location.origin + basePath;
 			const linkFull = `${baseURL}?name=${username}`;
-			const linkFullBase64 = `https://panel.ezhqpy.ru:2096/sub/${username}`;
-			const linkFullXRAY = `https://panel.ezhqpy.ru:2096/sub/${username}`;
+			const linkFullBase64 = `https://www.ezh-dev.ru/sub/${username}`;
+			const linkFullXRAY = `https://www.ezh-dev.ru/sub/${username}`;
 			const linkFullClash = `${baseURL}/clashmeta/${username}`;
 			var qrLink = linkFull;
 			const link64 = Base64.encode(linkFullBase64);
