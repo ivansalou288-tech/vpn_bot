@@ -348,14 +348,22 @@ def panel_add_inbound_client(session, inbound_id, client_dict, protocol):
 
 
 def panel_update_inbound_client(session, inbound_id, protocol, route_client_id, settings_obj, updated_client):
+    """Обновляет клиента через /inbounds/{id}/updateClient"""
+    client_email = updated_client.get("email")
+    if not client_email:
+        return {"success": False, "error": "No email in updated client"}
+    
+    enc_email = quote(str(client_email), safe="")
+    url = f"{BASE_URL}/panel/api/inbounds/{inbound_id}/updateClient/{enc_email}"
+    
     patch = {k: v for k, v in settings_obj.items() if k != "clients"}
     patch["clients"] = [updated_client]
     body = {"id": inbound_id, "settings": json.dumps(patch)}
-    enc = quote(str(route_client_id), safe="")
-    url = f"{BASE_URL}/panel/api/inbounds/updateClient/{enc}"
+    
     print(f"[DEBUG update] URL: {url}")
-    print(f"[DEBUG update] route_client_id: {route_client_id}, protocol: {protocol}")
-    print(f"[DEBUG update] client_id from updated: {updated_client.get('id')}, email: {updated_client.get('email')}")
+    print(f"[DEBUG update] client_email: {client_email}, protocol: {protocol}")
+    print(f"[DEBUG update] client data: {json.dumps(updated_client, indent=2)}")
+    
     r = session.post(url, json=body, verify=False)
     print(f"[DEBUG update] Response status: {r.status_code}")
     if r.status_code != 200:
@@ -492,9 +500,137 @@ def set_subscription_expiry_on_panel(tg_id: int, new_expiry_ms: int, inbound_ids
     return out
 
 
+def dell_client_from_all_inbounds(tg_id: int, inbound_ids=None):
+    """Удаляет клиента со всех указанных инбаундов."""
+    if inbound_ids is None:
+        inbound_ids = {1, 2, 3, 4}
+    
+    clients_data = get_clients()
+    if not clients_data.get("success"):
+        return {"success": False, "error": "Failed to get inbounds"}
+    
+    session, err = panel_session()
+    if session is None:
+        return {"success": False, "error": err or "Login failed"}
+    
+    results = []
+    for inbound in clients_data.get("obj", []):
+        iid = inbound.get("id")
+        if iid not in inbound_ids:
+            continue
+        
+        settings_obj = parse_inbound_settings(inbound)
+        if not settings_obj:
+            results.append({"inbound_id": iid, "error": "bad settings"})
+            continue
+        
+        matches = find_clients_for_tg_on_inbound(settings_obj, tg_id, iid)
+        if not matches:
+            results.append({"inbound_id": iid, "skipped": "no client"})
+            continue
+        
+        for client in matches:
+            em = client.get("email")
+            if em:
+                del_result = panel_del_client_by_email(session, iid, em)
+                results.append({"inbound_id": iid, "email": em, "result": del_result})
+    
+    return {"success": True, "results": results}
+
+
 def renew_subscription(tg_id: int, additional_months: int):
-    """Продлевает подписку на указанное количество месяцев (все инбаунды 1–4)."""
-    return renew_subscription_on_panel(tg_id, additional_months)
+    """
+    Продлевает подписку на указанное количество месяцев.
+    
+    Алгоритм:
+    1. Найти клиента и запомнить sub_id
+    2. Удалить клиента на основной панели
+    3. Отправить webhook на второй сервер для удаления
+    4. Пересоздать клиента с тем же sub_id и новой датой
+    5. Отправить webhook на второй сервер для создания
+    """
+    import time
+    
+    # 1. Получаем информацию о клиенте и sub_id
+    client_info = getSubById(tg_id)
+    if not client_info.get("success"):
+        return {"error": "Client not found", "details": client_info}
+    
+    sub_id = client_info.get("subId")
+    if not sub_id:
+        return {"error": "subId not found for client"}
+    
+    print(f"[RENEW] Found client sub_id={sub_id} for tg_id={tg_id}")
+    
+    # 2. Вычисляем новую дату окончания
+    current_expiry = client_info["client_info"]["expiryTime"]
+    current_time = int(time.time() * 1000)
+    
+    # Если подписка истекла (expiryTime = 0 или в прошлом), продлеваем от текущего времени
+    base_time = current_time if current_expiry == 0 or current_expiry < current_time else current_expiry
+    additional_ms = additional_months * 30 * 24 * 60 * 60 * 1000
+    new_expiry_ms = base_time + additional_ms
+    
+    # Конвертируем в дату
+    import datetime
+    new_expiry_date = datetime.datetime.fromtimestamp(new_expiry_ms / 1000)
+    new_date_str = new_expiry_date.strftime("%d.%m.%Y")
+    
+    print(f"[RENEW] Old expiry: {current_expiry}, new expiry: {new_expiry_ms} ({new_date_str})")
+    
+    # 3. Удаляем клиента на основной панели
+    print(f"[RENEW] Deleting client from main panel...")
+    del_result = dell_client_from_all_inbounds(tg_id)
+    print(f"[RENEW] Delete from main panel result: {del_result}")
+    
+    # 4. Отправляем webhook на второй сервер для удаления
+    try:
+        webhook_url = "https://www.ezh-dev.ru:2500/dell_client"
+        webhook_payload = {"tg_id": tg_id, "sub_id": sub_id}
+        print(f"[RENEW] Sending delete webhook to second server: {webhook_url}")
+        webhook_response = requests.post(webhook_url, json=webhook_payload, timeout=30, verify=False)
+        print(f"[RENEW] Delete webhook response: {webhook_response.status_code} - {webhook_response.text}")
+    except Exception as e:
+        print(f"[RENEW] Error sending delete webhook: {e}")
+    
+    # 5. Пересоздаем клиента с тем же sub_id и новой датой
+    print(f"[RENEW] Recreating client with same sub_id={sub_id}...")
+    
+    # Используем add_client_to_all_inbounds с готовым sub_id
+    from api_extended import add_client_to_all_inbounds
+    add_result = add_client_to_all_inbounds("", tg_id, new_date_str, sub_id=sub_id)
+    print(f"[RENEW] Recreate result: {add_result}")
+    
+    if not add_result.get("success"):
+        return {
+            "success": False, 
+            "error": "Failed to recreate client", 
+            "details": add_result,
+            "subId": sub_id
+        }
+    
+    # 6. Отправляем webhook на второй сервер для создания
+    try:
+        webhook_url = "https://www.ezh-dev.ru:2500/add_client"
+        webhook_payload = {"tg_id": tg_id, "sub_id": sub_id}
+        print(f"[RENEW] Sending add webhook to second server: {webhook_url}")
+        webhook_response = requests.post(webhook_url, json=webhook_payload, timeout=30, verify=False)
+        print(f"[RENEW] Add webhook response: {webhook_response.status_code} - {webhook_response.text}")
+    except Exception as e:
+        print(f"[RENEW] Error sending add webhook: {e}")
+    
+    return {
+        "success": True,
+        "message": f"Subscription renewed for {additional_months} months",
+        "subId": sub_id,
+        "old_expiry": current_expiry,
+        "new_expiry": new_expiry_ms,
+        "new_date": new_date_str,
+        "results": {
+            "deleted": del_result,
+            "created": add_result
+        }
+    }
 
 def convert_timestamp_to_human_readable(timestamp_ms):
     """Конвертирует timestamp в миллисекундах в читаемый формат"""

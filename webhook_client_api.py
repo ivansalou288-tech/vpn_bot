@@ -133,6 +133,77 @@ async def health_check():
     }
 
 
+@app.post("/dell_client")
+async def dell_client_webhook(request: dict):
+    """
+    Вебхук для удаления клиента с этого сервера.
+    Ожидает: {"tg_id": int, "sub_id": str}
+    Удаляет клиента со всех инбаундов этого сервера по sub_id.
+    """
+    try:
+        tg_id = request.get('tg_id')
+        sub_id = request.get('sub_id')
+        
+        if not tg_id or not sub_id:
+            return {
+                "success": False,
+                "error": "Missing required fields: tg_id and sub_id"
+            }
+        
+        print(f"[WEBHOOK dell_client] Received: tg_id={tg_id}, sub_id={sub_id}")
+        print(f"[WEBHOOK dell_client] Using panel: {cfg.PANEL_BASE_URL}")
+        
+        # Импортируем функции API
+        from api_extended import dell_client
+        
+        # Удаляем клиента со всех инбаундов
+        # Используем sub_id для поиска - нужно найти все email с этим sub_id
+        from api import get_clients, parse_inbound_settings, panel_session, panel_del_client_by_email
+        
+        clients_data = get_clients()
+        if not clients_data.get("success"):
+            return {"success": False, "error": "Failed to get inbounds"}
+        
+        session, err = panel_session()
+        if session is None:
+            return {"success": False, "error": err or "Login failed"}
+        
+        results = []
+        for inbound in clients_data.get("obj", []):
+            iid = inbound.get("id")
+            settings_obj = parse_inbound_settings(inbound)
+            if not settings_obj:
+                continue
+            
+            # Ищем клиентов с этим sub_id
+            for client in settings_obj.get("clients", []):
+                if client.get("subId") == sub_id:
+                    email = client.get("email")
+                    if email:
+                        print(f"[WEBHOOK dell_client] Deleting client email={email} from inbound {iid}")
+                        del_result = panel_del_client_by_email(session, iid, email)
+                        results.append({"inbound_id": iid, "email": email, "result": del_result})
+        
+        print(f"[WEBHOOK dell_client] Results: {results}")
+        
+        return {
+            "success": True,
+            "message": f"Client with sub_id={sub_id} deleted from {len(results)} inbounds",
+            "tg_id": tg_id,
+            "sub_id": sub_id,
+            "results": results
+        }
+        
+    except Exception as e:
+        print(f"[WEBHOOK dell_client] Error: {e}")
+        import traceback
+        traceback.print_exc()
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+
 @app.get("/")
 async def root():
     """Корневой endpoint"""
