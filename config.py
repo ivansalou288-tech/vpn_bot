@@ -46,5 +46,8 @@ def subscription_api_base_url() -> str:
 def webhook_url() -> str:
     return f"{subscription_api_base_url()}/payment/webhook"
 
+def crypto_webhook_url() -> str:
+    return f"{subscription_api_base_url()}/crypto/webhook"
+
 
 
