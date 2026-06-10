@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Перенаправление в Happ</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        .container {
+            text-align: center;
+            padding: 40px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 20px;
+            backdrop-filter: blur(10px);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+        }
+        h1 {
+            margin-bottom: 20px;
+            font-size: 24px;
+        }
+        p {
+            margin-bottom: 30px;
+            font-size: 16px;
+            opacity: 0.9;
+        }
+        .spinner {
+            border: 4px solid rgba(255, 255, 255, 0.3);
+            border-top: 4px solid white;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .manual-link {
+            margin-top: 20px;
+            padding: 15px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 10px;
+            word-break: break-all;
+        }
+        .manual-link a {
+            color: white;
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="spinner"></div>
+        <h1>Перенаправление в Happ...</h1>
+        <p>Если приложение не открылось автоматически, нажмите на ссылку ниже</p>
+        <div class="manual-link" id="manualLink"></div>
+    </div>
+
+    <script>
+        // Get subscription ID from URL parameter
+        const urlParams = new URLSearchParams(window.location.search);
+        const subId = urlParams.get('sub');
+
+        if (subId) {
+            // Construct the subscription URL
+            const subscriptionUrl = `https://www.ezh-dev.ru/sub/${subId}`;
+            
+            // Encode to base64
+            const base64Url = btoa(subscriptionUrl);
+            
+            // Construct happ deep link
+            const happDeepLink = `happ://add/${base64Url}`;
+            
+            // Display manual link
+            document.getElementById('manualLink').innerHTML = 
+                `<a href="${happDeepLink}">${happDeepLink}</a>`;
+            
+            // Redirect to happ
+            window.location.href = happDeepLink;
+        } else {
+            document.querySelector('h1').textContent = 'Ошибка';
+            document.querySelector('p').textContent = 'Не указан ID подписки';
+            document.querySelector('.spinner').style.display = 'none';
+        }
+    </script>
+</body>
+</html>

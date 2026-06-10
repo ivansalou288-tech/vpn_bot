@@ -875,9 +875,12 @@ async def subscription_callback(callback: types.CallbackQuery):
         
         # Создаем клавиатуру только если подписка активна
         if is_enabled:
+            subscription_url = f"https://www.ezh-dev.ru/sub/{sub_id}"
             subscription_keyboard = InlineKeyboardMarkup(
                 inline_keyboard=[
-                    [InlineKeyboardButton(text="Использовать", url=f"https://{PANEL_DOMAIN}/index.html?name={sub_id}", style="primary", icon_custom_emoji_id='5271604874419647061')],
+                    # [InlineKeyboardButton(text="Использовать", url=subscription_url, style="primary", icon_custom_emoji_id='5271604874419647061')],
+                    [CopyTextButton(text="Скопировать ссылку", data=subscription_url)],
+                    [InlineKeyboardButton(text="Happ", url=f"https://{PANEL_DOMAIN}/index.html?sub={sub_id}", style="primary")],
                     [InlineKeyboardButton(text="Продлить подписку", callback_data="renew_subscription", style="primary", icon_custom_emoji_id='5231012545799666522')],
                     # [instruction_btn],
                     [InlineKeyboardButton(text="Назад", callback_data="main_menu", style="danger")]
