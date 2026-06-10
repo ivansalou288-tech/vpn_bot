@@ -879,7 +879,7 @@ async def subscription_callback(callback: types.CallbackQuery):
             subscription_keyboard = InlineKeyboardMarkup(
                 inline_keyboard=[
                     # [InlineKeyboardButton(text="Использовать", url=subscription_url, style="primary", icon_custom_emoji_id='5271604874419647061')],
-                    [InlineKeyboardButton(text="Скопировать ссылку", copy_text=subscription_url)],
+                    [InlineKeyboardButton(text="Скопировать ссылку", copy_text=CopyTextButton(text=subscription_url))],
                     [InlineKeyboardButton(text="Happ", url=f"https://{PANEL_DOMAIN}/index.html?sub={sub_id}", style="primary")],
                     [InlineKeyboardButton(text="Продлить подписку", callback_data="renew_subscription", style="primary", icon_custom_emoji_id='5231012545799666522')],
                     # [instruction_btn],
