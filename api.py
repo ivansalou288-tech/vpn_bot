@@ -438,23 +438,137 @@ def send_add_client_webhook(tg_id: int, sub_id: str, end_date: str = None):
         return {"success": False, "error": str(e)}
 
 
+def cleanup_clients_for_subscription(sub_id: str, tg_id: int):
+    """Удаляет старых клиентов с тем же sub_id/tg_id перед batch-созданием."""
+    clients_data = get_clients()
+    if not clients_data.get("success"):
+        return {"success": False, "deleted": 0}
+
+    emails_to_delete = set()
+    for inbound in clients_data.get("obj", []):
+        settings_obj = parse_inbound_settings(inbound)
+        if not settings_obj:
+            continue
+        for client in settings_obj.get("clients", []):
+            if client.get("subId") == sub_id or str(client.get("tgId")) == str(tg_id):
+                email = client.get("email")
+                if email:
+                    emails_to_delete.add(email)
+
+    if not emails_to_delete:
+        return {"success": True, "deleted": 0}
+
+    session, err = panel_session()
+    if session is None:
+        return {"success": False, "error": err or "Login failed", "deleted": 0}
+
+    deleted = 0
+    for email in emails_to_delete:
+        del_result = panel_del_client_by_email(session, 0, email)
+        if del_result.get("success"):
+            deleted += 1
+        print(f"[API] Cleanup delete email={email}: {del_result}")
+
+    return {"success": True, "deleted": deleted, "emails": list(emails_to_delete)}
+
+
+def create_subscription_on_panel(tg_id: int, date: str, sub_id: str, cleanup: bool = True):
+    """
+    Создаёт одного клиента на всех inbound одним запросом POST /panel/api/clients/add.
+    Используется на основном и удалённом сервере.
+    """
+    expiry_ms = convert_date_to_timestamp(date)
+    if isinstance(expiry_ms, str):
+        return {"success": False, "error": expiry_ms, "subId": sub_id}
+
+    parts = sub_id.rsplit("_", 1)
+    sub_prefix = parts[0] if len(parts) > 1 else sub_id
+
+    cleanup_result = None
+    if cleanup:
+        cleanup_result = cleanup_clients_for_subscription(sub_id, tg_id)
+
+    clients_data = get_clients()
+    if not clients_data.get("success"):
+        return {
+            "success": False,
+            "error": "Failed to get inbounds list",
+            "subId": sub_id,
+            "cleanup_result": cleanup_result,
+        }
+
+    inbound_ids = [inbound.get("id") for inbound in clients_data.get("obj", []) if inbound.get("id") is not None]
+    if not inbound_ids:
+        return {
+            "success": False,
+            "error": "No inbounds found",
+            "subId": sub_id,
+            "cleanup_result": cleanup_result,
+        }
+
+    client_data = build_subscription_client(sub_prefix, tg_id, expiry_ms, sub_id)
+    print(f"[API] Batch create: subId={sub_id}, inbounds={inbound_ids}")
+    panel_result = panel_add_client(client_data, inbound_ids)
+
+    success = bool(panel_result.get("success"))
+    return {
+        "success": success,
+        "message": f"Client added to {len(inbound_ids)} inbounds" if success else "Failed to add client to panel",
+        "subId": sub_id,
+        "client_prefix": sub_prefix,
+        "inbound_ids": inbound_ids,
+        "client": client_data,
+        "panel_result": panel_result,
+        "cleanup_result": cleanup_result,
+    }
+
+
+def update_subscription_on_panel(tg_id: int, sub_id: str, expiry_ms: int):
+    """Fallback: одним запросом обновить клиента на всех inbound."""
+    parts = sub_id.rsplit("_", 1)
+    sub_prefix = parts[0] if len(parts) > 1 else sub_id
+    email = sub_id
+
+    clients_data = get_clients()
+    if not clients_data.get("success"):
+        return {"success": False, "error": "Failed to get inbounds list"}
+
+    inbound_ids = [inbound.get("id") for inbound in clients_data.get("obj", []) if inbound.get("id") is not None]
+    if not inbound_ids:
+        return {"success": False, "error": "No inbounds found"}
+
+    client_data = build_subscription_client(sub_prefix, tg_id, expiry_ms, sub_id)
+    session, err = panel_session()
+    if session is None:
+        return {"success": False, "error": err or "Login failed"}
+
+    update_result = panel_update_client_by_email(session, email, client_data, inbound_ids)
+    return {
+        "success": bool(update_result.get("success")),
+        "method": "update",
+        "subId": sub_id,
+        "inbound_ids": inbound_ids,
+        "update_result": update_result,
+    }
+
+
 def panel_update_inbound_client(session, inbound_id, protocol, route_client_id, settings_obj, updated_client):
     """Обновляет клиента через /inbounds/{id}/updateClient"""
     client_email = updated_client.get("email")
     if not client_email:
         return {"success": False, "error": "No email in updated client"}
-    
+
     enc_email = quote(str(client_email), safe="")
     url = f"{BASE_URL}/panel/api/inbounds/{inbound_id}/updateClient/{enc_email}"
-    
+
     patch = {k: v for k, v in settings_obj.items() if k != "clients"}
     patch["clients"] = [updated_client]
     body = {"id": inbound_id, "settings": json.dumps(patch)}
-    
+
     print(f"[DEBUG update] URL: {url}")
     print(f"[DEBUG update] client_email: {client_email}, protocol: {protocol}")
     print(f"[DEBUG update] client data: {json.dumps(updated_client, indent=2)}")
-    
+
     r = session.post(url, json=body, verify=False)
     print(f"[DEBUG update] Response status: {r.status_code}")
     if r.status_code != 200:

@@ -7,8 +7,7 @@ from api import (
     parse_inbound_settings,
     panel_session,
     panel_del_client_by_email,
-    panel_add_client,
-    build_subscription_client,
+    create_subscription_on_panel,
     send_add_client_webhook,
     convert_date_to_timestamp,
     generate_sub_prefix,
@@ -18,20 +17,10 @@ import json
 
 def add_client_to_all_inbounds(username: str, tg_id: int, date: str, sub_id: str = None, notify_remote: bool = True):
     """
-    Создаёт подписку двумя запросами:
-    1. POST /panel/api/clients/add — один client на все inboundIds
-    2. POST webhook на удалённый сервер (если notify_remote=True)
-
-    :param username: префикс subId (subId = {prefix}_{tg_id})
-    :param tg_id: Telegram ID
-    :param date: дата окончания ДД.ММ.ГГГГ
-    :param sub_id: готовый sub_id (опционально)
-    :param notify_remote: отправлять webhook на второй сервер
+    Создаёт подписку:
+    1. POST /panel/api/clients/add — один client на все inboundIds (локальная панель)
+    2. POST webhook на удалённый сервер — там тоже один client на все inbound (если notify_remote=True)
     """
-    expiry_ms = convert_date_to_timestamp(date)
-    if isinstance(expiry_ms, str):
-        return {"success": False, "error": expiry_ms}
-
     if sub_id:
         universal_sub_id = sub_id
         parts = sub_id.rsplit("_", 1)
@@ -42,35 +31,14 @@ def add_client_to_all_inbounds(username: str, tg_id: int, date: str, sub_id: str
         universal_sub_id = f"{sub_prefix}_{tg_id}"
         print(f"[API] Generated new sub_id: {universal_sub_id} (prefix: {sub_prefix})")
 
-    clients_data = get_clients()
-    if not clients_data.get("success"):
+    result = create_subscription_on_panel(tg_id, date, universal_sub_id, cleanup=False)
+    if not result.get("success"):
         return {
             "success": False,
-            "message": "Failed to get inbounds list",
+            "message": result.get("message") or result.get("error") or "Failed to add client to panel",
             "subId": universal_sub_id,
             "client_prefix": sub_prefix,
-        }
-
-    inbound_ids = [inbound.get("id") for inbound in clients_data.get("obj", []) if inbound.get("id") is not None]
-    if not inbound_ids:
-        return {
-            "success": False,
-            "message": "No inbounds found",
-            "subId": universal_sub_id,
-            "client_prefix": sub_prefix,
-        }
-
-    client_data = build_subscription_client(sub_prefix, tg_id, expiry_ms, universal_sub_id)
-    print(f"[API] Creating client on inbounds {inbound_ids}, subId={universal_sub_id}")
-
-    panel_result = panel_add_client(client_data, inbound_ids)
-    if not panel_result.get("success"):
-        return {
-            "success": False,
-            "message": "Failed to add client to panel",
-            "subId": universal_sub_id,
-            "client_prefix": sub_prefix,
-            "panel_result": panel_result,
+            **{k: v for k, v in result.items() if k not in ("success", "message")},
         }
 
     webhook_result = None
@@ -79,11 +47,11 @@ def add_client_to_all_inbounds(username: str, tg_id: int, date: str, sub_id: str
 
     return {
         "success": True,
-        "message": f"Client added to {len(inbound_ids)} inbounds",
+        "message": result.get("message"),
         "subId": universal_sub_id,
         "client_prefix": sub_prefix,
-        "inbound_ids": inbound_ids,
-        "panel_result": panel_result,
+        "inbound_ids": result.get("inbound_ids"),
+        "panel_result": result.get("panel_result"),
         "webhook_result": webhook_result,
     }
 

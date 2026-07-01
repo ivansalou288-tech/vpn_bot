@@ -61,99 +61,75 @@ async def options_handler(path: str):
 @app.post("/add_client")
 async def add_client_webhook(request: dict):
     """
-    Вебхук для добавления клиента на этот сервер.
-    Ожидает: {"tg_id": int, "sub_id": str}
-    Создает клиента на всех инбаундах этого сервера с тем же sub_id.
+    Вебхук для добавления клиента на удалённом сервере.
+    Ожидает: {"tg_id": int, "sub_id": str, "end_date": "ДД.ММ.ГГГГ"}
+    Один POST /panel/api/clients/add — один client на все inbound этого сервера.
     """
     try:
-        tg_id = request.get('tg_id')
-        sub_id = request.get('sub_id')
-        end_date = request.get('end_date')
-        
+        tg_id = request.get("tg_id")
+        sub_id = request.get("sub_id")
+        end_date = request.get("end_date")
+
         if not tg_id or not sub_id:
             return {
                 "success": False,
-                "error": "Missing required fields: tg_id and sub_id"
+                "error": "Missing required fields: tg_id and sub_id",
             }
-        
+
         print(f"[WEBHOOK add_client] Received: tg_id={tg_id}, sub_id={sub_id}, end_date={end_date}")
         print(f"[WEBHOOK add_client] Using panel: {cfg.PANEL_BASE_URL}")
-        
-        from api_extended import add_client_to_all_inbounds
-        from api import get_clients, parse_inbound_settings, panel_session, panel_del_client_by_email, _renew_by_updating_expiry, convert_date_to_timestamp
+
+        from api import create_subscription_on_panel, update_subscription_on_panel, convert_date_to_timestamp
         import datetime
 
         if not end_date:
-            current_date = datetime.datetime.now()
-            end_date = (current_date + datetime.timedelta(days=30)).strftime("%d.%m.%Y")
+            end_date = (datetime.datetime.now() + datetime.timedelta(days=30)).strftime("%d.%m.%Y")
 
         expiry_ms = convert_date_to_timestamp(end_date)
         if isinstance(expiry_ms, str):
             return {"success": False, "error": expiry_ms}
 
-        # Удаляем старых клиентов с этим sub_id перед созданием
-        clients_data = get_clients()
-        if clients_data.get("success"):
-            session, _ = panel_session()
-            if session:
-                for inbound in clients_data.get("obj", []):
-                    iid = inbound.get("id")
-                    settings_obj = parse_inbound_settings(inbound)
-                    if not settings_obj:
-                        continue
-                    for client in settings_obj.get("clients", []):
-                        if client.get("subId") == sub_id:
-                            email = client.get("email")
-                            if email:
-                                print(f"[WEBHOOK add_client] Deleting old client email={email} from inbound {iid}")
-                                panel_del_client_by_email(session, iid, email)
-
-        print(f"[WEBHOOK add_client] Creating client with end_date={end_date}")
-        print(f"[WEBHOOK add_client] Using same sub_id: {sub_id}")
-
-        # Один запрос на панель этого сервера, без повторного webhook
-        result = add_client_to_all_inbounds("", int(tg_id), end_date, sub_id=sub_id, notify_remote=False)
+        # Один batch-запрос: один client → все inbound на этой панели
+        result = create_subscription_on_panel(int(tg_id), end_date, sub_id, cleanup=True)
 
         if not result.get("success"):
-            print(f"[WEBHOOK add_client] Create failed, trying update fallback...")
-            update_result = _renew_by_updating_expiry(int(tg_id), expiry_ms)
+            print("[WEBHOOK add_client] Batch create failed, trying single update fallback...")
+            update_result = update_subscription_on_panel(int(tg_id), sub_id, expiry_ms)
             if update_result.get("success"):
                 result = {
                     "success": True,
-                    "message": "Client expiry updated on second server",
+                    "message": "Client updated on remote server (fallback)",
                     "subId": sub_id,
                     "method": "update",
                     "details": update_result,
                 }
-        
+
         print(f"[WEBHOOK add_client] Result: {result}")
-        
+
         if result.get("success"):
             return {
                 "success": True,
-                "message": f"Client tg_id={tg_id} created successfully with sub_id={sub_id}",
+                "message": f"Client tg_id={tg_id} created on all inbounds with sub_id={sub_id}",
                 "tg_id": tg_id,
                 "sub_id": sub_id,
                 "end_date": end_date,
-                "details": result
+                "inbound_ids": result.get("inbound_ids"),
+                "details": result,
             }
-        else:
-            return {
-                "success": False,
-                "error": result.get("message", "Failed to create client"),
-                "tg_id": tg_id,
-                "sub_id": sub_id,
-                "details": result
-            }
-        
+
+        return {
+            "success": False,
+            "error": result.get("message") or result.get("error") or "Failed to create client",
+            "tg_id": tg_id,
+            "sub_id": sub_id,
+            "details": result,
+        }
+
     except Exception as e:
         print(f"[WEBHOOK add_client] Error: {e}")
         import traceback
         traceback.print_exc()
-        return {
-            "success": False,
-            "error": str(e)
-        }
+        return {"success": False, "error": str(e)}
 
 
 @app.get("/health")
