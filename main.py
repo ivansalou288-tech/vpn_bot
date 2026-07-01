@@ -9,6 +9,7 @@ from aiogram.types import LabeledPrice, Message, PreCheckoutQuery
 from botlogic import payment_keyboard 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
+from config import *
 from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CopyTextButton
 from sqlalchemy import create_engine, Column, Integer, String, select
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
