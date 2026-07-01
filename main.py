@@ -188,7 +188,7 @@ async def check_channel_subscription(user_id: int, bot: Bot) -> bool:
     except Exception as e:
         print(f"Error checking channel subscription: {e}")
         # Если бот не имеет прав, возвращаем False
-        return False
+        return True
 
 
 # Асинхронная функция для получения всех цен
