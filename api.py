@@ -337,49 +337,105 @@ def panel_update_client_by_email(session, email, client_data, inbound_ids=None):
         return {"success": False, "msg": r.text}
 
 
-def panel_add_inbound_client(session, inbound_id, client_dict, protocol):
-    """Add client using new /panel/api/clients/add endpoint with Bearer token"""
-    # Подготавливаем клиента для нового API
-    client = dict(client_dict)
-    
-    # Убеждаемся, что есть все необходимые поля
-    if "id" not in client and protocol == "vless":
-        client["id"] = client_dict.get("id", secrets.token_urlsafe(16))
-    if "password" not in client and protocol == "trojan":
-        client["password"] = secrets.token_urlsafe(16)
-    
-    # Для VLESS не нужна password, для Trojan не нужен id
-    if protocol == "vless" and "password" in client:
-        del client["password"]
-    if protocol == "trojan" and "id" in client:
-        del client["id"]
-    
-    # Новый API endpoint: /panel/api/clients/add
-    # Body format: {"client": {...}, "inboundIds": [inbound_id]}
+def panel_add_client(client_dict, inbound_ids):
+    """
+    Добавляет клиента на несколько inbound одним запросом.
+    Body: {"client": {...}, "inboundIds": [3, 5, ...]}
+    """
+    if not inbound_ids:
+        return {"success": False, "error": "No inbound IDs provided"}
+
     body = {
-        "client": client,
-        "inboundIds": [inbound_id]
+        "client": dict(client_dict),
+        "inboundIds": list(inbound_ids),
     }
-    
+
     url = f"{BASE_URL}/panel/api/clients/add"
-    print(f"[API] POST запрос (новый API): {url}")
+    print(f"[API] POST clients/add (batch): {url}")
     print(f"[API] Body: {json.dumps(body, indent=2)}")
-    
+
     headers = get_headers()
     r = requests.post(url, json=body, headers=headers, verify=False)
-    
+
     print(f"[API] Ответ панели - статус: {r.status_code}")
     print(f"[API] Ответ панели - содержимое: {r.text}")
-    
+
     if r.status_code != 200:
         return {"success": False, "error": f"HTTP {r.status_code}", "msg": r.text}
-    
+
     try:
         result = r.json()
         print(f"[API] Парсед JSON ответ: {json.dumps(result, indent=2)}")
         return result
     except json.JSONDecodeError:
         return {"success": False, "msg": r.text}
+
+
+def panel_add_inbound_client(session, inbound_id, client_dict, protocol):
+    """Add client to a single inbound (wrapper over panel_add_client)."""
+    client = dict(client_dict)
+
+    if "id" not in client and protocol == "vless":
+        client["id"] = client_dict.get("id", secrets.token_urlsafe(16))
+    if "password" not in client and protocol == "trojan":
+        client["password"] = secrets.token_urlsafe(16)
+
+    if protocol == "vless" and "password" in client:
+        del client["password"]
+    if protocol == "trojan" and "id" in client:
+        del client["id"]
+
+    return panel_add_client(client, [inbound_id])
+
+
+def build_subscription_client(prefix: str, tg_id: int, expiry_ms: int, sub_id: str = None):
+    """Собирает объект client для batch-запроса clients/add."""
+    sub_id = sub_id or f"{prefix}_{tg_id}"
+    email = sub_id
+
+    return {
+        "id": secrets.token_urlsafe(16),
+        "flow": "",
+        "email": email,
+        "limitIp": 0,
+        "totalGB": 0,
+        "expiryTime": expiry_ms,
+        "enable": True,
+        "tgId": tg_id,
+        "subId": sub_id,
+        "comment": "",
+        "reset": 0,
+    }
+
+
+def send_add_client_webhook(tg_id: int, sub_id: str, end_date: str = None):
+    """Один запрос на удалённый сервер для создания подписки."""
+    webhook_url = "https://www.ezh-dev.ru:2500/add_client"
+    webhook_payload = {"tg_id": tg_id, "sub_id": sub_id}
+    if end_date:
+        webhook_payload["end_date"] = end_date
+
+    print(f"[API] Webhook POST {webhook_url}")
+    print(f"[API] Payload: {json.dumps(webhook_payload)}")
+
+    try:
+        webhook_response = requests.post(webhook_url, json=webhook_payload, timeout=60, verify=False)
+        print(f"[API] Webhook status: {webhook_response.status_code}")
+        print(f"[API] Webhook response: {webhook_response.text}")
+        return {
+            "success": webhook_response.status_code == 200,
+            "status_code": webhook_response.status_code,
+            "response": webhook_response.text,
+        }
+    except requests.exceptions.Timeout:
+        print(f"[API] Webhook timeout: {webhook_url}")
+        return {"success": False, "error": "timeout"}
+    except requests.exceptions.ConnectionError:
+        print(f"[API] Webhook connection error: {webhook_url}")
+        return {"success": False, "error": "connection_error"}
+    except Exception as e:
+        print(f"[API] Webhook error: {e}")
+        return {"success": False, "error": str(e)}
 
 
 def panel_update_inbound_client(session, inbound_id, protocol, route_client_id, settings_obj, updated_client):
@@ -698,16 +754,6 @@ def renew_subscription(tg_id: int, additional_months: int):
         renew_method = "update"
         final_result = update_result
 
-    # 6. Отправляем webhook на второй сервер для создания/обновления
-    try:
-        webhook_url = "https://www.ezh-dev.ru:2500/add_client"
-        webhook_payload = {"tg_id": tg_id, "sub_id": sub_id, "end_date": new_date_str}
-        print(f"[RENEW] Sending add webhook to second server: {webhook_url}")
-        webhook_response = requests.post(webhook_url, json=webhook_payload, timeout=30, verify=False)
-        print(f"[RENEW] Add webhook response: {webhook_response.status_code} - {webhook_response.text}")
-    except Exception as e:
-        print(f"[RENEW] Error sending add webhook: {e}")
-
     return {
         "success": True,
         "message": f"Subscription renewed for {additional_months} months ({renew_method})",
@@ -755,95 +801,11 @@ def convert_date_to_timestamp(date_str):
 
 def add_client(inbound_id: int, username: str, tg_id: int, date: str):
     """
-    Новый клиент через POST .../clients/add (новый API endpoint).
-    Параметр username — общий префикс для subId на всех инбаундах: subId = {username}_{tg_id},
-    email/id на инбаунде = {username}_{tg_id}_{inbound_id}. Если username пустой — генерируется случайный префикс.
+    Создание подписки на всех inbound (inbound_id сохранён для совместимости).
+    Делегирует в add_client_to_all_inbounds — 1 запрос на панель + 1 webhook.
     """
-    expiry_timestamp = convert_date_to_timestamp(date)
-    if isinstance(expiry_timestamp, str):
-        return {"error": expiry_timestamp}
-
-    prefix_raw = (username or "").strip() if username is not None else ""
-    prefix = prefix_raw if prefix_raw else generate_sub_prefix(8)
-    sub_id = f"{prefix}_{tg_id}"
-    email = f"{prefix}_{tg_id}_{inbound_id}"
-    client_id = f"{prefix}_{tg_id}_{inbound_id}"
-
-    clients_data = get_clients()
-    if not clients_data.get("success"):
-        return {"error": "Failed to get current inbound data"}
-
-    target_inbound = None
-    for inbound in clients_data.get("obj", []):
-        if inbound.get("id") == inbound_id:
-            target_inbound = inbound
-            break
-    if not target_inbound:
-        return {"error": f"Inbound with id {inbound_id} not found"}
-
-    protocol = target_inbound.get("protocol", "vless")
-
-    if protocol == "trojan":
-        password = secrets.token_urlsafe(16)
-        client_data = {
-            "password": password,
-            "flow": "",
-            "email": email,
-            "limitIp": 0,
-            "totalGB": 0,
-            "expiryTime": expiry_timestamp,
-            "enable": True,
-            "tgId": tg_id,
-            "subId": sub_id,
-            "comment": "",
-            "reset": 0,
-        }
-        print(f"[API] Creating trojan client for inbound {inbound_id} subId={sub_id}")
-    else:
-        client_data = {
-            "id": client_id,
-            "flow": "",
-            "email": email,
-            "limitIp": 0,
-            "totalGB": 0,
-            "expiryTime": expiry_timestamp,
-            "enable": True,
-            "tgId": tg_id,
-            "subId": sub_id,
-            "comment": "",
-            "reset": 0,
-        }
-        print(f"[API] Creating vless client id={client_id} inbound={inbound_id} subId={sub_id}")
-
-    print(f"[API] Подготовка клиента: email={email}, tg_id={tg_id}, sub_id={sub_id}")
-    print(f"[API] Данные клиента: {json.dumps(client_data, indent=2)}")
-
-    print(f"[API] Отправка клиента на панель (новый API)...")
-    result = panel_add_inbound_client(None, inbound_id, client_data, protocol)
-    print(f"[API] Итоговый результат: {json.dumps(result, indent=2)}")
-    
-    # Отправляем запрос на www.ezh-dev.ru:2500/add_client если клиент успешно создан
-    if result.get("success"):
-        sub_id = client_data.get("subId")
-        try:
-            webhook_url = "https://www.ezh-dev.ru:2500/add_client"
-            webhook_payload = {
-                "tg_id": tg_id,
-                "sub_id": sub_id
-            }
-            print(f"[API] Отправляем вебхук: POST {webhook_url}")
-            print(f"[API] Payload: {json.dumps(webhook_payload)}")
-            webhook_response = requests.post(webhook_url, json=webhook_payload, timeout=60, verify=False)
-            print(f"[API] Вебхук ответ статус: {webhook_response.status_code}")
-            print(f"[API] Вебхук ответ: {webhook_response.text}")
-        except requests.exceptions.Timeout:
-            print(f"[API] Ошибка: Timeout при отправке вебхука на {webhook_url}")
-        except requests.exceptions.ConnectionError:
-            print(f"[API] Ошибка: Connection Error при отправке вебхука на {webhook_url}")
-        except Exception as e:
-            print(f"[API] Ошибка при отправке вебхука: {e}")
-    
-    return result
+    from api_extended import add_client_to_all_inbounds
+    return add_client_to_all_inbounds(username, tg_id, date)
 
 def check_cantfree(tg_id):
     """Проверяет есть ли пользователь в CantFree"""

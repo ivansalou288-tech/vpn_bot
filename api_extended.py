@@ -1,43 +1,47 @@
 # Extended API functions for VPN client management
 
 from api import (
-    add_client,
     get_clients,
     set_subscription_expiry_on_panel,
     find_clients_for_tg_on_inbound,
     parse_inbound_settings,
     panel_session,
     panel_del_client_by_email,
+    panel_add_client,
+    build_subscription_client,
+    send_add_client_webhook,
+    convert_date_to_timestamp,
     generate_sub_prefix,
 )
 import json
-import secrets
 
 
-def add_client_to_all_inbounds(username: str, tg_id: int, date: str, sub_id: str = None):
+def add_client_to_all_inbounds(username: str, tg_id: int, date: str, sub_id: str = None, notify_remote: bool = True):
     """
-    Один общый subId на всех инбаундах: subId = {prefix}_{tg_id}.
-    Разные email на каждом: {prefix}_{tg_id}_{inbound_id}.
-    Добавляет клиента только на СУЩЕСТВУЮЩИЕ инбаунды.
-    
-    :param username: Имя пользователя (префикс для subId)
-    :param tg_id: Telegram ID клиента
-    :param date: Дата окончания в формате ДД.МММ.ГГГГ
-    :param sub_id: (опционально) Готовый sub_id. Если не передан, генерируется новый
+    Создаёт подписку двумя запросами:
+    1. POST /panel/api/clients/add — один client на все inboundIds
+    2. POST webhook на удалённый сервер (если notify_remote=True)
+
+    :param username: префикс subId (subId = {prefix}_{tg_id})
+    :param tg_id: Telegram ID
+    :param date: дата окончания ДД.ММ.ГГГГ
+    :param sub_id: готовый sub_id (опционально)
+    :param notify_remote: отправлять webhook на второй сервер
     """
-    # Если sub_id передан, используем его и извлекаем prefix
+    expiry_ms = convert_date_to_timestamp(date)
+    if isinstance(expiry_ms, str):
+        return {"success": False, "error": expiry_ms}
+
     if sub_id:
         universal_sub_id = sub_id
-        parts = sub_id.rsplit('_', 1)
+        parts = sub_id.rsplit("_", 1)
         sub_prefix = parts[0] if len(parts) > 1 else sub_id
         print(f"[API] Using provided sub_id: {universal_sub_id} (prefix: {sub_prefix})")
     else:
-        # Генерируем новый prefix если sub_id не передан (без буквы 't')
         sub_prefix = username if username and username.strip() else generate_sub_prefix(8)
         universal_sub_id = f"{sub_prefix}_{tg_id}"
         print(f"[API] Generated new sub_id: {universal_sub_id} (prefix: {sub_prefix})")
 
-    # Получаем список существующих инбаундов
     clients_data = get_clients()
     if not clients_data.get("success"):
         return {
@@ -45,33 +49,44 @@ def add_client_to_all_inbounds(username: str, tg_id: int, date: str, sub_id: str
             "message": "Failed to get inbounds list",
             "subId": universal_sub_id,
             "client_prefix": sub_prefix,
-            "results": [],
         }
-    
-    existing_inbound_ids = [inbound.get("id") for inbound in clients_data.get("obj", [])]
-    
-    results = []
-    successfully_added = 0
-    for inbound_id in existing_inbound_ids:
-        print(f"[API] Adding client to inbound {inbound_id} subId={universal_sub_id}...")
-        result = add_client(inbound_id, sub_prefix, tg_id, date)
-        results.append({"inbound_id": inbound_id, "result": result})
-        if result.get("success"):
-            print(f"[API] Successfully added client to inbound {inbound_id}")
-            successfully_added += 1
-        else:
-            print(f"[API] Failed to add client to inbound {inbound_id}: {result}")
 
-    # Считаем операцию успешной если клиент добавлен хотя бы на один инбаунд
-    success = successfully_added > 0
+    inbound_ids = [inbound.get("id") for inbound in clients_data.get("obj", []) if inbound.get("id") is not None]
+    if not inbound_ids:
+        return {
+            "success": False,
+            "message": "No inbounds found",
+            "subId": universal_sub_id,
+            "client_prefix": sub_prefix,
+        }
+
+    client_data = build_subscription_client(sub_prefix, tg_id, expiry_ms, universal_sub_id)
+    print(f"[API] Creating client on inbounds {inbound_ids}, subId={universal_sub_id}")
+
+    panel_result = panel_add_client(client_data, inbound_ids)
+    if not panel_result.get("success"):
+        return {
+            "success": False,
+            "message": "Failed to add client to panel",
+            "subId": universal_sub_id,
+            "client_prefix": sub_prefix,
+            "panel_result": panel_result,
+        }
+
+    webhook_result = None
+    if notify_remote:
+        webhook_result = send_add_client_webhook(tg_id, universal_sub_id, date)
 
     return {
-        "success": success,
-        "message": f"Client added to {successfully_added}/{len(existing_inbound_ids)} inbounds" if success else "Failed to add client to any inbound",
+        "success": True,
+        "message": f"Client added to {len(inbound_ids)} inbounds",
         "subId": universal_sub_id,
         "client_prefix": sub_prefix,
-        "results": results,
+        "inbound_ids": inbound_ids,
+        "panel_result": panel_result,
+        "webhook_result": webhook_result,
     }
+
 
 def renew_subscription_all_inbounds(tg_id: int, additional_months: int):
     """Удаляет старую подписку со всех серверов и создаёт новую с продлённым сроком."""
@@ -80,6 +95,7 @@ def renew_subscription_all_inbounds(tg_id: int, additional_months: int):
         return renew_subscription(tg_id, additional_months)
     except Exception as e:
         return {"success": False, "error": str(e)}
+
 
 def dell_client(inbound_id: int, tg_id: int):
     """Удаляет всех клиентов с данным tgId на указанном inbound (delClientByEmail)."""
@@ -114,45 +130,47 @@ def dell_client(inbound_id: int, tg_id: int):
             last = panel_del_client_by_email(session, inbound_id, em)
     return last or {"success": True, "message": f"Client deleted from inbound {inbound_id}"}
 
+
 def getSubById(telegram_id):
     """Get client info by Telegram ID across all inbounds"""
     clients_data = get_clients()
-    
-    if not clients_data.get('success'):
+
+    if not clients_data.get("success"):
         return {"error": "Failed to get clients", "details": clients_data}
-    
-    inbounds = clients_data.get('obj', [])
-    
+
+    inbounds = clients_data.get("obj", [])
+
     for inbound in inbounds:
-        if 'settings' in inbound:
-            settings = inbound['settings']
-            
+        if "settings" in inbound:
+            settings = inbound["settings"]
+
             if isinstance(settings, str):
                 try:
                     settings = json.loads(settings)
                 except json.JSONDecodeError:
                     continue
-            
-            if 'clients' in settings:
-                clients = settings['clients']
-                
+
+            if "clients" in settings:
+                clients = settings["clients"]
+
                 for client in clients:
-                    client_tgId = client.get('tgId')
+                    client_tgId = client.get("tgId")
                     if str(client_tgId) == str(telegram_id):
                         return {
                             "success": True,
-                            "subId": client.get('subId'),
+                            "subId": client.get("subId"),
                             "client_info": {
-                                "id": client.get('id'),
-                                "email": client.get('email'),
-                                "enable": client.get('enable'),
-                                "expiryTime": client.get('expiryTime'),
-                                "totalGB": client.get('totalGB')
+                                "id": client.get("id"),
+                                "email": client.get("email"),
+                                "enable": client.get("enable"),
+                                "expiryTime": client.get("expiryTime"),
+                                "totalGB": client.get("totalGB"),
                             },
-                            "inbound_id": inbound.get('id')
+                            "inbound_id": inbound.get("id"),
                         }
-    
+
     return {"error": f"No client found with tgId: {telegram_id}"}
+
 
 def admin_add_client(tg_id: int, months: int = 1, end_date: str = None):
     """Админ: новый клиент на 4 инбаунда или выставить тот же срок существующему (не суммировать месяцы)."""

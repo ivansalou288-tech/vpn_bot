@@ -82,7 +82,7 @@ async def add_client_webhook(request: dict):
         from api_extended import add_client_to_all_inbounds
         from api import get_clients, parse_inbound_settings, panel_session, panel_del_client_by_email, _renew_by_updating_expiry, convert_date_to_timestamp
         import datetime
-        
+
         if not end_date:
             current_date = datetime.datetime.now()
             end_date = (current_date + datetime.timedelta(days=30)).strftime("%d.%m.%Y")
@@ -107,11 +107,12 @@ async def add_client_webhook(request: dict):
                             if email:
                                 print(f"[WEBHOOK add_client] Deleting old client email={email} from inbound {iid}")
                                 panel_del_client_by_email(session, iid, email)
-        
+
         print(f"[WEBHOOK add_client] Creating client with end_date={end_date}")
         print(f"[WEBHOOK add_client] Using same sub_id: {sub_id}")
-        
-        result = add_client_to_all_inbounds("", int(tg_id), end_date, sub_id=sub_id)
+
+        # Один запрос на панель этого сервера, без повторного webhook
+        result = add_client_to_all_inbounds("", int(tg_id), end_date, sub_id=sub_id, notify_remote=False)
 
         if not result.get("success"):
             print(f"[WEBHOOK add_client] Create failed, trying update fallback...")
