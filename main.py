@@ -173,6 +173,23 @@ async def set_price(time_months: int, price_rubles: int):
         
         return price_record
 
+async def check_channel_subscription(user_id: int, bot: Bot) -> bool:
+    """Проверяет подписан ли пользователь на канал"""
+    try:
+        # Сначала пробуем получить информацию о канале
+        chat = await bot.get_chat(chat_id=CHANNEL_ID)
+        print(f"Channel info: {chat.id}, {chat.type}")
+        
+        # Проверяем подписку
+        member = await bot.get_chat_member(chat_id=chat.id, user_id=user_id)
+        print(f"Member status for user {user_id}: {member.status}")
+        return member.status in ["member", "administrator", "creator"]
+    except Exception as e:
+        print(f"Error checking channel subscription: {e}")
+        # Если бот не имеет прав, возвращаем False
+        return False
+
+
 # Асинхронная функция для получения всех цен
 async def get_all_prices():
     async with AsyncSessionLocal() as session:
@@ -634,16 +651,34 @@ async def start(message: types.Message):
             parse_mode=ParseMode.HTML
         )
     else:
-        # Если есть реферал, даем бонус
-        if referrer_id and referrer_id != message.from_user.id:
-            await handle_referral_bonus(message.from_user.id, referrer_id)
+        # Проверяем подписку на канал
+        is_subscribed = await check_channel_subscription(message.from_user.id, bot)
         
-        await message.answer(
-            "Привет! Я бот для управления VPN.\n\n"
-            "Выберите одну из опций ниже:",
-            reply_markup=keyboard
-        )
-
+        if not is_subscribed:
+            # Пользователь не подписан на канал
+            subscribe_keyboard = InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [InlineKeyboardButton(text="Подписаться на канал", url=CHANNEL_LINK, style="primary", icon_custom_emoji_id="5771695636411847302")],
+                    [InlineKeyboardButton(text="Проверить подписку", callback_data="check_subscription", style="success", icon_custom_emoji_id="5776375003280838798")]
+                ]
+            )
+            await message.answer(
+                '<tg-emoji emoji-id="5994750571041525522">👋</tg-emoji> Привет! Для использования бота необходимо подписаться на наш канал.\n\n' +
+                '<tg-emoji emoji-id="5775937998948404844">➕</tg-emoji> После подписки нажмите кнопку ниже для проверки:',
+                reply_markup=subscribe_keyboard,
+                parse_mode=ParseMode.HTML
+            )
+        else:
+            # Пользователь подписан - показываем обычное меню
+            # Если есть реферал, даем бонус
+            if referrer_id and referrer_id != message.from_user.id:
+                await handle_referral_bonus(message.from_user.id, referrer_id)
+            
+            await message.answer(
+                "Привет! Я бот для управления VPN.\n\n"
+                "Выберите одну из опций ниже:",
+                reply_markup=keyboard
+            )
 
 
 

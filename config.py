@@ -51,3 +51,6 @@ def crypto_webhook_url() -> str:
 
 
 
+# Telegram channel for subscription check
+CHANNEL_ID = -1003747346867
+CHANNEL_LINK = f"https://t.me/+8fLpTsIO-_5kYWQy"
