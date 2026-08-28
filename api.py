@@ -408,6 +408,61 @@ def build_subscription_client(prefix: str, tg_id: int, expiry_ms: int, sub_id: s
     }
 
 
+BOT_TOKEN = "8358697144:AAGppsqXjG9S08nGLUpghL-jUfTz9H4gj58"
+ADMIN_CHAT_IDS = [1240656726, 1401086794]
+
+
+def remote_error_text(webhook_result):
+    """Человекочитаемое описание ошибки удалённого сервера."""
+    if not webhook_result:
+        return "нет ответа от удалённого сервера"
+    err = webhook_result.get("error")
+    if err == "timeout":
+        return "таймаут запроса к удалённому серверу"
+    if err == "connection_error":
+        return "нет соединения с удалённым сервером"
+    if err:
+        return str(err)
+    parsed = webhook_result.get("parsed")
+    if isinstance(parsed, dict):
+        details = parsed.get("error") or parsed.get("message")
+        if details:
+            return str(details)
+    text = (webhook_result.get("response") or "").strip()
+    code = webhook_result.get("status_code")
+    snippet = text[:300] if text else "пустой ответ"
+    if code:
+        return f"HTTP {code}: {snippet}"
+    return snippet
+
+
+def notify_admin_remote_server_error(tg_id, sub_id, date, error, context="создание подписки"):
+    """Пишет админам, что на удалённом сервере не получилось создать/обновить подписку."""
+    import html as html_mod
+
+    safe_error = html_mod.escape(str(error or "неизвестная ошибка")[:500])
+    text = (
+        f"⚠️ <b>Ошибка на удалённом сервере</b>\n\n"
+        f"Операция: {html_mod.escape(str(context))}\n"
+        f"👤 TG ID: <code>{tg_id}</code>\n"
+        f"🔑 SubID: <code>{html_mod.escape(str(sub_id or 'N/A'))}</code>\n"
+        f"📅 Дата: <b>{html_mod.escape(str(date or 'N/A'))}</b>\n\n"
+        f"✅ Основной сервер: создано\n"
+        f"❌ Удалённый сервер: не создано\n"
+        f"🔍 Ошибка: <code>{safe_error}</code>\n\n"
+        f"Клиенту показано, что операция успешна."
+    )
+    for chat_id in ADMIN_CHAT_IDS:
+        try:
+            requests.post(
+                f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
+                json={"chat_id": chat_id, "text": text, "parse_mode": "HTML"},
+                timeout=10,
+            )
+        except Exception as e:
+            print(f"[API] Failed to notify admin {chat_id} about remote error: {e}")
+
+
 def send_add_client_webhook(tg_id: int, sub_id: str, end_date: str = None):
     """Один запрос на удалённый сервер для создания подписки."""
     webhook_url = "https://www.ezh-dev.ru:2500/add_client"
@@ -422,10 +477,29 @@ def send_add_client_webhook(tg_id: int, sub_id: str, end_date: str = None):
         webhook_response = requests.post(webhook_url, json=webhook_payload, timeout=60, verify=False)
         print(f"[API] Webhook status: {webhook_response.status_code}")
         print(f"[API] Webhook response: {webhook_response.text}")
+
+        raw = webhook_response.text or ""
+        parsed = None
+        try:
+            parsed = webhook_response.json()
+        except Exception:
+            parsed = None
+
+        if isinstance(parsed, dict) and "success" in parsed:
+            success = bool(parsed.get("success"))
+            error = None if success else (
+                parsed.get("error") or parsed.get("message") or raw[:500] or f"HTTP {webhook_response.status_code}"
+            )
+        else:
+            success = 200 <= webhook_response.status_code < 300
+            error = None if success else (raw[:500] or f"HTTP {webhook_response.status_code}")
+
         return {
-            "success": webhook_response.status_code == 200,
+            "success": success,
             "status_code": webhook_response.status_code,
-            "response": webhook_response.text,
+            "response": raw,
+            "parsed": parsed,
+            "error": error,
         }
     except requests.exceptions.Timeout:
         print(f"[API] Webhook timeout: {webhook_url}")
@@ -843,16 +917,16 @@ def renew_subscription(tg_id: int, additional_months: int):
     except Exception as e:
         print(f"[RENEW] Error sending delete webhook: {e}")
     
-    # 5. Пересоздаем клиента с тем же sub_id и новой датой
+    # 5. Пересоздаём: сначала основной сервер, затем удалённый
     print(f"[RENEW] Recreating client with same sub_id={sub_id}...")
-    
-    # Используем add_client_to_all_inbounds с готовым sub_id
     from api_extended import add_client_to_all_inbounds
     add_result = add_client_to_all_inbounds("", tg_id, new_date_str, sub_id=sub_id)
     print(f"[RENEW] Recreate result: {add_result}")
 
     renew_method = "recreate"
     final_result = add_result
+    remote_success = add_result.get("remote_success")
+    remote_error = add_result.get("remote_error")
 
     if not add_result.get("success"):
         print("[RENEW] Recreate failed, falling back to update expiry via new API...")
@@ -864,9 +938,23 @@ def renew_subscription(tg_id: int, additional_months: int):
                 "error": "Failed to recreate or update client",
                 "details": {"deleted": del_result, "created": add_result, "updated": update_result},
                 "subId": sub_id,
+                "main_success": False,
+                "remote_success": False,
             }
         renew_method = "update"
         final_result = update_result
+        webhook_result = send_add_client_webhook(tg_id, sub_id, new_date_str)
+        remote_success = bool(webhook_result.get("success"))
+        if not remote_success:
+            remote_error = remote_error_text(webhook_result)
+            notify_admin_remote_server_error(
+                tg_id=tg_id,
+                sub_id=sub_id,
+                date=new_date_str,
+                error=remote_error,
+                context="продление подписки",
+            )
+        final_result = {**update_result, "webhook_result": webhook_result}
 
     return {
         "success": True,
@@ -876,6 +964,9 @@ def renew_subscription(tg_id: int, additional_months: int):
         "new_expiry": new_expiry_ms,
         "new_date": new_date_str,
         "method": renew_method,
+        "main_success": True,
+        "remote_success": remote_success,
+        "remote_error": remote_error,
         "results": {
             "deleted": del_result,
             "created": add_result if renew_method == "recreate" else None,

@@ -844,32 +844,58 @@ async def add_client_command(message: types.Message):
             api_data["months"] = months
             status_text = f"на {months} месяц{'ев' if months > 1 and months < 5 else 'ев' if months > 4 else ''}"
         
-        # Вызываем API endpoint
+        # Вызываем API endpoint (ждём основной + удалённый сервер)
         response = requests.post(
             f"{API_BASE_URL}/admin/add_client",
             json=api_data,
             verify=False,
-            timeout=30
+            timeout=90
         )
         
         if response.status_code == 200:
             result = response.json()
+            main_ok = result.get("main_success", result.get("success"))
+            remote_ok = result.get("remote_success")
+            remote_error = result.get("remote_error")
+
+            def _server_line(ok, label, error=None):
+                if ok is True:
+                    return f"✅ {label}: создано"
+                if ok is False:
+                    line = f"❌ {label}: не создано"
+                    if error:
+                        safe = str(error).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+                        line += f"\n🔍 Ошибка: <code>{safe[:300]}</code>"
+                    return line
+                return f"⏭ {label}: не проверялся"
+
+            servers_block = (
+                f"\n\n🖥 <b>Серверы</b>\n"
+                f"{_server_line(main_ok, 'Основной')}\n"
+                f"{_server_line(remote_ok, 'Удалённый', remote_error)}"
+            )
             
             if result.get('success'):
+                if main_ok and remote_ok is False:
+                    title = "⚠️ <b>Клиент добавлен только на основном сервере</b>"
+                else:
+                    title = "✅ <b>Клиент успешно добавлен!</b>"
                 await status_message.edit_text(
-                    f"✅ <b>Клиент успешно добавлен!</b>\n\n"
+                    f"{title}\n\n"
                     f"👤 Telegram ID: <code>{tg_id}</code>\n"
                     f"📅 Период: <b>{status_text}</b>\n"
                     f"📝 Username: <code>{result.get('username', 'N/A')}</code>\n"
                     f"🔑 SubID: <code>{result.get('subId', 'N/A')}</code>\n"
-                    f"📅 Дата окончания: <b>{result.get('end_date', 'N/A')}</b>",
+                    f"📅 Дата окончания: <b>{result.get('end_date', 'N/A')}</b>"
+                    f"{servers_block}",
                     parse_mode=ParseMode.HTML
                 )
             else:
                 await status_message.edit_text(
                     f"❌ <b>Ошибка при добавлении клиента</b>\n\n"
                     f"👤 Telegram ID: <code>{tg_id}</code>\n"
-                    f"🔍 Ошибка: <code>{result.get('error', 'Unknown error')}</code>",
+                    f"🔍 Ошибка: <code>{result.get('error') or result.get('message', 'Unknown error')}</code>"
+                    f"{servers_block}",
                     parse_mode=ParseMode.HTML
                 )
         else:

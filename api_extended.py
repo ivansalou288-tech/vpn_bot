@@ -11,15 +11,26 @@ from api import (
     send_add_client_webhook,
     convert_date_to_timestamp,
     generate_sub_prefix,
+    remote_error_text,
+    notify_admin_remote_server_error,
 )
 import json
 
 
-def add_client_to_all_inbounds(username: str, tg_id: int, date: str, sub_id: str = None, notify_remote: bool = True):
+def add_client_to_all_inbounds(
+    username: str,
+    tg_id: int,
+    date: str,
+    sub_id: str = None,
+    notify_remote: bool = True,
+    notify_admin_remote_error: bool = True,
+):
     """
-    Создаёт подписку:
-    1. POST /panel/api/clients/add — один client на все inboundIds (локальная панель)
-    2. POST webhook на удалённый сервер — там тоже один client на все inbound (если notify_remote=True)
+    Создаёт подписку строго по порядку:
+    1. основной сервер (локальная панель)
+    2. удалённый сервер (webhook)
+
+    success=True если создалось на основном. Ошибка удалённого не ломает ответ клиенту.
     """
     if sub_id:
         universal_sub_id = sub_id
@@ -31,19 +42,39 @@ def add_client_to_all_inbounds(username: str, tg_id: int, date: str, sub_id: str
         universal_sub_id = f"{sub_prefix}_{tg_id}"
         print(f"[API] Generated new sub_id: {universal_sub_id} (prefix: {sub_prefix})")
 
+    print(f"[API] Creating subscription on MAIN server first: tg_id={tg_id}, sub_id={universal_sub_id}")
     result = create_subscription_on_panel(tg_id, date, universal_sub_id, cleanup=False)
     if not result.get("success"):
+        print(f"[API] MAIN server create failed: {result}")
         return {
             "success": False,
             "message": result.get("message") or result.get("error") or "Failed to add client to panel",
             "subId": universal_sub_id,
             "client_prefix": sub_prefix,
-            **{k: v for k, v in result.items() if k not in ("success", "message")},
+            **{k: v for k, v in result.items() if k not in ("success", "message", "subId")},
+            "main_success": False,
+            "remote_success": False,
+            "remote_error": None,
         }
 
     webhook_result = None
+    remote_success = None
+    remote_err = None
     if notify_remote:
+        print(f"[API] Creating subscription on REMOTE server: tg_id={tg_id}, sub_id={universal_sub_id}")
         webhook_result = send_add_client_webhook(tg_id, universal_sub_id, date)
+        remote_success = bool(webhook_result.get("success"))
+        if not remote_success:
+            remote_err = remote_error_text(webhook_result)
+            print(f"[API] REMOTE server create failed: {remote_err}")
+            if notify_admin_remote_error:
+                notify_admin_remote_server_error(
+                    tg_id=tg_id,
+                    sub_id=universal_sub_id,
+                    date=date,
+                    error=remote_err,
+                    context="создание подписки",
+                )
 
     return {
         "success": True,
@@ -53,6 +84,9 @@ def add_client_to_all_inbounds(username: str, tg_id: int, date: str, sub_id: str
         "inbound_ids": result.get("inbound_ids"),
         "panel_result": result.get("panel_result"),
         "webhook_result": webhook_result,
+        "main_success": True,
+        "remote_success": remote_success,
+        "remote_error": remote_err,
     }
 
 
@@ -169,14 +203,36 @@ def admin_add_client(tg_id: int, months: int = 1, end_date: str = None):
             sub_id = existing_client.get("subId") or ""
             display_user = f"user_{tg_id}"
             action = "updated"
+            main_success = bool(result.get("success"))
+            remote_success = None
+            remote_err = None
+            webhook_result = None
+            if main_success and sub_id:
+                print(f"[ADMIN] Updating REMOTE server after main: sub_id={sub_id}")
+                webhook_result = send_add_client_webhook(tg_id, sub_id, calculated_end_date)
+                remote_success = bool(webhook_result.get("success"))
+                if not remote_success:
+                    remote_err = remote_error_text(webhook_result)
+            result = {
+                **result,
+                "webhook_result": webhook_result,
+                "main_success": main_success,
+                "remote_success": remote_success,
+                "remote_error": remote_err,
+            }
         else:
             print("[ADMIN] Creating new client on all inbounds")
-            result = add_client_to_all_inbounds("", tg_id, calculated_end_date)
+            result = add_client_to_all_inbounds(
+                "", tg_id, calculated_end_date, notify_admin_remote_error=False
+            )
             sub_id = result.get("subId", "")
             display_user = result.get("client_prefix", "")
             action = "added"
+            main_success = bool(result.get("main_success", result.get("success")))
+            remote_success = result.get("remote_success")
+            remote_err = result.get("remote_error")
 
-        ok = bool(result.get("success"))
+        ok = bool(main_success)
 
         return {
             "success": ok,
@@ -186,6 +242,9 @@ def admin_add_client(tg_id: int, months: int = 1, end_date: str = None):
             "subId": sub_id,
             "months": months,
             "end_date": calculated_end_date,
+            "main_success": main_success,
+            "remote_success": remote_success,
+            "remote_error": remote_err,
             "result": result,
         }
 

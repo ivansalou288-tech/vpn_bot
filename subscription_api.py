@@ -221,6 +221,23 @@ def end_date_from_subscription_result(subscription_result, fallback_end_date_str
     return fallback_end_date_str
 
 
+def client_sees_subscription_success(subscription_result) -> bool:
+    """Клиенту показываем успех, если подписка есть на основном сервере."""
+    if not subscription_result:
+        return False
+    if "main_success" in subscription_result:
+        return bool(subscription_result.get("main_success"))
+    return bool(subscription_result.get("success"))
+
+
+def remote_fail_admin_note(subscription_result) -> str:
+    if not subscription_result or subscription_result.get("remote_success") is not False:
+        return ""
+    err = str(subscription_result.get("remote_error") or "неизвестная ошибка")
+    safe = err.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    return f"\n⚠️ Удалённый сервер: не создано (<code>{safe[:200]}</code>)"
+
+
 async def send_crypto_notifications(user_id: int, username: str, time_months: int, amount_rub: int, is_renewal: bool, end_date_str: str, subscription_result, sub_id: str = None):
     """Отправляет уведомления об оплате CryptoBot"""
     try:
@@ -233,7 +250,7 @@ async def send_crypto_notifications(user_id: int, username: str, time_months: in
         months_text = "год" if time_months == 12 else f"{time_months} мес."
         amount_usd = round(amount_rub / RUB_TO_USD_RATE, 2)
         
-        if subscription_result and subscription_result.get('success'):
+        if client_sees_subscription_success(subscription_result):
             # Добавляем информацию о подписке
             sub_info = f"\n🔑 Sub ID: <code>{sub_id}</code>" if sub_id else ""
             user_message = (
@@ -263,6 +280,7 @@ async def send_crypto_notifications(user_id: int, username: str, time_months: in
             f"📅 Период: {time_months} мес.\n\n"
             f"💵 Сумма: {amount_rub}₽ ({amount_usd} USDT)\n"
             f"✅ Подписка {'продлена' if is_renewal else 'создана'} автоматически"
+            f"{remote_fail_admin_note(subscription_result)}"
         )
         
         await bot.send_message(chat_id=CRYPTOBOT_OPERATOR_CHAT_ID, text=operator_message, parse_mode=ParseMode.HTML)
@@ -592,7 +610,7 @@ async def send_payment_notifications(payment, data, subscription_result, end_dat
         user_id = payment.user_id
         
         # Сообщение пользователю
-        if subscription_result and subscription_result.get('success'):
+        if client_sees_subscription_success(subscription_result):
             user_message = (
                 f"✅ <b>Оплата успешно завершена!</b>\n\n"
                 f"⏰ Период: {time_months} мес.\n"
@@ -654,7 +672,8 @@ async def send_payment_notifications(payment, data, subscription_result, end_dat
             f"💵 Сумма: {amount}₽\n"
             f"📉 Комиссия: {commission_amount}₽\n"
             f"💎 <b>Прибыль: {final_amount}₽</b>\n\n"
-            f"✅ Подписка {'продлена' if is_renewal else 'создана'} автоматически\n"
+            f"✅ Подписка {'продлена' if is_renewal else 'создана'} автоматически"
+            f"{remote_fail_admin_note(subscription_result)}\n"
             f"Order ID: <code>{payment.order_id}</code>"
         )
         
