@@ -12,7 +12,89 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 # ============================================================================
 # КОНФИГУРАЦИЯ ЭТОГО СЕРВЕРА (локальные переменные)
 # ============================================================================
-WEBHOOK_PANEL_DOMAIN = os.getenv("WEBHOOK_PANEL_DOMAIN", "www.ezh-dev.ru")
+def _detect_panel_domain():
+    env = os.getenv("WEBHOOK_PANEL_DOMAIN", "").strip()
+    if env:
+        return env
+    path = os.path.abspath(__file__).replace("\\", "/")
+    if "panel.ezhvpn.ru" in path or "/ezhvpn" in path:
+        return "panel.ezhvpn.ru"
+    if "ezh-dev.ru" in path:
+        return "www.ezh-dev.ru"
+    host = os.uname().nodename if hasattr(os, "uname") else ""
+    if "ezhvpn" in host:
+        return "panel.ezhvpn.ru"
+    if "ezh-dev" in host:
+        return "www.ezh-dev.ru"
+    return "www.ezh-dev.ru"
+
+
+def _ssl_pair_exists(certfile, keyfile):
+    return bool(certfile and keyfile and os.path.isfile(certfile) and os.path.isfile(keyfile))
+
+
+def _find_letsencrypt_certs(domain):
+    live_root = "/etc/letsencrypt/live"
+    domains = []
+    if domain:
+        domains.append(domain)
+        if domain.startswith("www."):
+            domains.append(domain[4:])
+        elif "." in domain:
+            domains.append(f"www.{domain}")
+    for name in domains:
+        cert = os.path.join(live_root, name, "fullchain.pem")
+        key = os.path.join(live_root, name, "privkey.pem")
+        if _ssl_pair_exists(cert, key):
+            return cert, key
+    if os.path.isdir(live_root):
+        try:
+            for name in sorted(os.listdir(live_root)):
+                cert = os.path.join(live_root, name, "fullchain.pem")
+                key = os.path.join(live_root, name, "privkey.pem")
+                if _ssl_pair_exists(cert, key):
+                    return cert, key
+        except OSError:
+            pass
+    return None, None
+
+
+def _ensure_self_signed_certs(domain):
+    cert_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "certs")
+    os.makedirs(cert_dir, exist_ok=True)
+    cert = os.path.join(cert_dir, "fullchain.pem")
+    key = os.path.join(cert_dir, "privkey.pem")
+    if _ssl_pair_exists(cert, key):
+        return cert, key
+    import subprocess
+    print(f"[Webhook Client API] Let's Encrypt certs not found, generating self-signed for {domain}")
+    subprocess.run(
+        [
+            "openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes",
+            "-keyout", key, "-out", cert, "-days", "3650",
+            "-subj", f"/CN={domain}",
+        ],
+        check=True,
+    )
+    return cert, key
+
+
+def resolve_ssl_files(domain):
+    env_cert = os.getenv("SSL_CERTFILE", "").strip()
+    env_key = os.getenv("SSL_KEYFILE", "").strip()
+    if _ssl_pair_exists(env_cert, env_key):
+        return env_cert, env_key
+    cert, key = _find_letsencrypt_certs(domain)
+    if _ssl_pair_exists(cert, key):
+        return cert, key
+    try:
+        return _ensure_self_signed_certs(domain)
+    except Exception as e:
+        print(f"[Webhook Client API] Failed to prepare SSL certs: {e}")
+        return None, None
+
+
+WEBHOOK_PANEL_DOMAIN = _detect_panel_domain()
 WEBHOOK_PANEL_PORT = int(os.getenv("WEBHOOK_PANEL_PORT", "18869"))
 WEBHOOK_PANEL_PATH = os.getenv("WEBHOOK_PANEL_PATH", "17yIzDBi5K2d8nr6Vt")
 WEBHOOK_PANEL_SCHEME = "https"
@@ -231,17 +313,24 @@ async def root():
 
 
 if __name__ == "__main__":
+    ssl_certfile, ssl_keyfile = resolve_ssl_files(WEBHOOK_PANEL_DOMAIN)
     print("[Webhook Client API] Starting server...")
+    print(f"[Webhook Client API] Domain: {WEBHOOK_PANEL_DOMAIN}")
     print(f"[Webhook Client API] Panel: {WEBHOOK_PANEL_BASE_URL}")
-    print(f"[Webhook Client API] HTTPS server on port {WEBHOOK_HTTPS_PORT}")
-    print(f"[Webhook Client API] HTTP server on port {WEBHOOK_HTTP_PORT} (for testing)")
-    
-    # Запускаем оба сервера - сначала HTTPS
-    uvicorn.run(
-        app,
-        host="0.0.0.0",
-        port=WEBHOOK_HTTPS_PORT,
-        ssl_keyfile=f"/etc/letsencrypt/live/{WEBHOOK_PANEL_DOMAIN}/privkey.pem",
-        ssl_certfile=f"/etc/letsencrypt/live/{WEBHOOK_PANEL_DOMAIN}/fullchain.pem",
-        log_level="info"
-    )
+    print(f"[Webhook Client API] Port: {WEBHOOK_HTTPS_PORT}")
+
+    run_kwargs = {
+        "app": app,
+        "host": "0.0.0.0",
+        "port": WEBHOOK_HTTPS_PORT,
+        "log_level": "info",
+    }
+    if _ssl_pair_exists(ssl_certfile, ssl_keyfile):
+        run_kwargs["ssl_certfile"] = ssl_certfile
+        run_kwargs["ssl_keyfile"] = ssl_keyfile
+        print(f"[Webhook Client API] HTTPS cert: {ssl_certfile}")
+        print(f"[Webhook Client API] HTTPS key: {ssl_keyfile}")
+    else:
+        print("[Webhook Client API] SSL certs missing, starting HTTP (without TLS)")
+
+    uvicorn.run(**run_kwargs)
