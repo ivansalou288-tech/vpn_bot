@@ -946,7 +946,7 @@ async def subscription_callback(callback: types.CallbackQuery):
         
         # Создаем клавиатуру только если подписка активна
         if is_enabled:
-            subscription_url = f"https://panel.ezqpy.ru:4567/sub/{sub_id}"
+            subscription_url = f"https://panel.ezhqpy.ru:4567/sub/{sub_id}"
             subscription_keyboard = InlineKeyboardMarkup(
                 inline_keyboard=[
                     # [InlineKeyboardButton(text="Использовать", url=subscription_url, style="primary", icon_custom_emoji_id='5271604874419647061')],
