@@ -8,7 +8,8 @@ import secrets
 import string
 from urllib.parse import quote
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-from config import PANEL_BASE_URL, PANEL_DOMAIN, PANEL_PORT, PANEL_PATH
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from config import PANEL_BASE_URL, PANEL_DOMAIN, PANEL_PORT, PANEL_PATH, REMOTE_SERVERS
 
 BASE_URL = PANEL_BASE_URL
 
@@ -436,20 +437,38 @@ def remote_error_text(webhook_result):
     return snippet
 
 
-def notify_admin_remote_server_error(tg_id, sub_id, date, error, context="создание подписки"):
+def notify_admin_remote_server_error(tg_id, sub_id, date, error, context="создание подписки", remote_results=None):
     """Пишет админам, что на удалённом сервере не получилось создать/обновить подписку."""
     import html as html_mod
 
     safe_error = html_mod.escape(str(error or "неизвестная ошибка")[:500])
+    if remote_results:
+        server_lines = []
+        for r in remote_results:
+            label = html_mod.escape(str(r.get("label") or r.get("name") or "Удалённый"))
+            if r.get("success"):
+                server_lines.append(f"✅ {label}: создано")
+            else:
+                err = html_mod.escape(str(r.get("error") or "неизвестная ошибка")[:500])
+                server_lines.append(f"❌ {label}: не создано\n🔍 Ошибка: <code>{err}</code>")
+        remotes_block = "\n".join(server_lines)
+        failed_count = sum(1 for r in remote_results if not r.get("success"))
+        title = "Ошибка на удалённых серверах" if failed_count > 1 else "Ошибка на удалённом сервере"
+    else:
+        remotes_block = (
+            f"❌ Удалённый сервер: не создано\n"
+            f"🔍 Ошибка: <code>{safe_error}</code>"
+        )
+        title = "Ошибка на удалённом сервере"
+
     text = (
-        f"⚠️ <b>Ошибка на удалённом сервере</b>\n\n"
+        f"⚠️ <b>{title}</b>\n\n"
         f"Операция: {html_mod.escape(str(context))}\n"
         f"👤 TG ID: <code>{tg_id}</code>\n"
         f"🔑 SubID: <code>{html_mod.escape(str(sub_id or 'N/A'))}</code>\n"
         f"📅 Дата: <b>{html_mod.escape(str(date or 'N/A'))}</b>\n\n"
         f"✅ Основной сервер: создано\n"
-        f"❌ Удалённый сервер: не создано\n"
-        f"🔍 Ошибка: <code>{safe_error}</code>\n\n"
+        f"{remotes_block}\n\n"
         f"Клиенту показано, что операция успешна."
     )
     for chat_id in ADMIN_CHAT_IDS:
@@ -463,20 +482,31 @@ def notify_admin_remote_server_error(tg_id, sub_id, date, error, context="соз
             print(f"[API] Failed to notify admin {chat_id} about remote error: {e}")
 
 
-def send_add_client_webhook(tg_id: int, sub_id: str, end_date: str = None):
-    """Один запрос на удалённый сервер для создания подписки."""
-    webhook_url = "https://www.ezh-dev.ru:2500/add_client"
-    webhook_payload = {"tg_id": tg_id, "sub_id": sub_id}
-    if end_date:
-        webhook_payload["end_date"] = end_date
+def _post_remote_webhook(server, path: str, payload: dict, timeout: int = 60):
+    """Один POST на webhook одного удалённого сервера."""
+    label = server.get("label") or server.get("name") or "remote"
+    name = server.get("name") or label
+    base = str(server.get("base_url") or "").rstrip("/")
+    webhook_url = f"{base}{path}"
 
-    print(f"[API] Webhook POST {webhook_url}")
-    print(f"[API] Payload: {json.dumps(webhook_payload)}")
+    print(f"[API] Webhook POST {webhook_url} ({label})")
+    print(f"[API] Payload: {json.dumps(payload)}")
+
+    result = {
+        "success": False,
+        "name": name,
+        "label": label,
+        "url": webhook_url,
+        "status_code": None,
+        "response": "",
+        "parsed": None,
+        "error": None,
+    }
 
     try:
-        webhook_response = requests.post(webhook_url, json=webhook_payload, timeout=60, verify=False)
-        print(f"[API] Webhook status: {webhook_response.status_code}")
-        print(f"[API] Webhook response: {webhook_response.text}")
+        webhook_response = requests.post(webhook_url, json=payload, timeout=timeout, verify=False)
+        print(f"[API] Webhook {label} status: {webhook_response.status_code}")
+        print(f"[API] Webhook {label} response: {webhook_response.text}")
 
         raw = webhook_response.text or ""
         parsed = None
@@ -494,22 +524,80 @@ def send_add_client_webhook(tg_id: int, sub_id: str, end_date: str = None):
             success = 200 <= webhook_response.status_code < 300
             error = None if success else (raw[:500] or f"HTTP {webhook_response.status_code}")
 
-        return {
+        result.update({
             "success": success,
             "status_code": webhook_response.status_code,
             "response": raw,
             "parsed": parsed,
             "error": error,
-        }
+        })
+        return result
     except requests.exceptions.Timeout:
         print(f"[API] Webhook timeout: {webhook_url}")
-        return {"success": False, "error": "timeout"}
+        result["error"] = "timeout"
+        return result
     except requests.exceptions.ConnectionError:
         print(f"[API] Webhook connection error: {webhook_url}")
-        return {"success": False, "error": "connection_error"}
+        result["error"] = "connection_error"
+        return result
     except Exception as e:
-        print(f"[API] Webhook error: {e}")
-        return {"success": False, "error": str(e)}
+        print(f"[API] Webhook error ({label}): {e}")
+        result["error"] = str(e)
+        return result
+
+
+def send_webhooks_to_all_remotes(path: str, payload: dict, timeout: int = 60):
+    """Параллельно дергает webhook на всех удалённых серверах."""
+    servers = list(REMOTE_SERVERS or [])
+    if not servers:
+        return {"success": True, "results": [], "error": None}
+
+    by_name = {}
+    workers = max(1, len(servers))
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = {
+            pool.submit(_post_remote_webhook, server, path, payload, timeout): server
+            for server in servers
+        }
+        for fut in as_completed(futures):
+            server = futures[fut]
+            name = server.get("name") or server.get("label")
+            try:
+                by_name[name] = fut.result()
+            except Exception as e:
+                by_name[name] = {
+                    "success": False,
+                    "name": name,
+                    "label": server.get("label") or name,
+                    "error": str(e),
+                }
+
+    results = [by_name[s.get("name") or s.get("label")] for s in servers]
+    failed = [r for r in results if not r.get("success")]
+    return {
+        "success": not failed,
+        "results": results,
+        "error": None if not failed else "; ".join(
+            f"{r.get('label')}: {r.get('error') or 'ошибка'}" for r in failed
+        ),
+    }
+
+
+def send_add_client_webhook(tg_id: int, sub_id: str, end_date: str = None):
+    """Создаёт подписку на всех удалённых серверах."""
+    webhook_payload = {"tg_id": tg_id, "sub_id": sub_id}
+    if end_date:
+        webhook_payload["end_date"] = end_date
+    return send_webhooks_to_all_remotes("/add_client", webhook_payload, timeout=60)
+
+
+def send_dell_client_webhook(tg_id: int, sub_id: str):
+    """Удаляет подписку на всех удалённых серверах."""
+    return send_webhooks_to_all_remotes(
+        "/dell_client",
+        {"tg_id": tg_id, "sub_id": sub_id},
+        timeout=30,
+    )
 
 
 def cleanup_clients_for_subscription(sub_id: str, tg_id: int):
@@ -869,9 +957,9 @@ def renew_subscription(tg_id: int, additional_months: int):
     Алгоритм:
     1. Найти клиента и запомнить sub_id
     2. Удалить клиента на основной панели
-    3. Отправить webhook на второй сервер для удаления
+    3. Отправить webhook на все удалённые серверы для удаления
     4. Пересоздать клиента с тем же sub_id и новой датой
-    5. Отправить webhook на второй сервер для создания
+    5. Отправить webhook на все удалённые серверы для создания
     """
     import time
     
@@ -907,17 +995,12 @@ def renew_subscription(tg_id: int, additional_months: int):
     del_result = dell_client_from_all_inbounds(tg_id)
     print(f"[RENEW] Delete from main panel result: {del_result}")
     
-    # 4. Отправляем webhook на второй сервер для удаления
-    try:
-        webhook_url = "https://www.ezh-dev.ru:2500/dell_client"
-        webhook_payload = {"tg_id": tg_id, "sub_id": sub_id}
-        print(f"[RENEW] Sending delete webhook to second server: {webhook_url}")
-        webhook_response = requests.post(webhook_url, json=webhook_payload, timeout=30, verify=False)
-        print(f"[RENEW] Delete webhook response: {webhook_response.status_code} - {webhook_response.text}")
-    except Exception as e:
-        print(f"[RENEW] Error sending delete webhook: {e}")
+    # 4. Удаляем клиента на всех удалённых серверах
+    print("[RENEW] Sending delete webhook to remote servers...")
+    dell_webhook_result = send_dell_client_webhook(tg_id, sub_id)
+    print(f"[RENEW] Delete remotes: {dell_webhook_result}")
     
-    # 5. Пересоздаём: сначала основной сервер, затем удалённый
+    # 5. Пересоздаём: сначала основной сервер, затем все удалённые
     print(f"[RENEW] Recreating client with same sub_id={sub_id}...")
     from api_extended import add_client_to_all_inbounds
     add_result = add_client_to_all_inbounds("", tg_id, new_date_str, sub_id=sub_id)
@@ -927,6 +1010,7 @@ def renew_subscription(tg_id: int, additional_months: int):
     final_result = add_result
     remote_success = add_result.get("remote_success")
     remote_error = add_result.get("remote_error")
+    remote_results = add_result.get("remote_results") or []
 
     if not add_result.get("success"):
         print("[RENEW] Recreate failed, falling back to update expiry via new API...")
@@ -940,11 +1024,13 @@ def renew_subscription(tg_id: int, additional_months: int):
                 "subId": sub_id,
                 "main_success": False,
                 "remote_success": False,
+                "remote_results": [],
             }
         renew_method = "update"
         final_result = update_result
         webhook_result = send_add_client_webhook(tg_id, sub_id, new_date_str)
         remote_success = bool(webhook_result.get("success"))
+        remote_results = webhook_result.get("results") or []
         if not remote_success:
             remote_error = remote_error_text(webhook_result)
             notify_admin_remote_server_error(
@@ -953,8 +1039,9 @@ def renew_subscription(tg_id: int, additional_months: int):
                 date=new_date_str,
                 error=remote_error,
                 context="продление подписки",
+                remote_results=remote_results,
             )
-        final_result = {**update_result, "webhook_result": webhook_result}
+        final_result = {**update_result, "webhook_result": webhook_result, "remote_results": remote_results}
 
     return {
         "success": True,
@@ -967,6 +1054,7 @@ def renew_subscription(tg_id: int, additional_months: int):
         "main_success": True,
         "remote_success": remote_success,
         "remote_error": remote_error,
+        "remote_results": remote_results,
         "results": {
             "deleted": del_result,
             "created": add_result if renew_method == "recreate" else None,
@@ -1007,7 +1095,7 @@ def convert_date_to_timestamp(date_str):
 def add_client(inbound_id: int, username: str, tg_id: int, date: str):
     """
     Создание подписки на всех inbound (inbound_id сохранён для совместимости).
-    Делегирует в add_client_to_all_inbounds — 1 запрос на панель + 1 webhook.
+    Делегирует в add_client_to_all_inbounds — 1 запрос на панель + webhook на все удалённые серверы.
     """
     from api_extended import add_client_to_all_inbounds
     return add_client_to_all_inbounds(username, tg_id, date)

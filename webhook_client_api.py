@@ -12,9 +12,9 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 # ============================================================================
 # КОНФИГУРАЦИЯ ЭТОГО СЕРВЕРА (локальные переменные)
 # ============================================================================
-WEBHOOK_PANEL_DOMAIN = "www.ezh-dev.ru"
-WEBHOOK_PANEL_PORT = 18869
-WEBHOOK_PANEL_PATH = "17yIzDBi5K2d8nr6Vt"
+WEBHOOK_PANEL_DOMAIN = os.getenv("WEBHOOK_PANEL_DOMAIN", "www.ezh-dev.ru")
+WEBHOOK_PANEL_PORT = int(os.getenv("WEBHOOK_PANEL_PORT", "18869"))
+WEBHOOK_PANEL_PATH = os.getenv("WEBHOOK_PANEL_PATH", "17yIzDBi5K2d8nr6Vt")
 WEBHOOK_PANEL_SCHEME = "https"
 WEBHOOK_PANEL_BASE_URL = f"{WEBHOOK_PANEL_SCHEME}://{WEBHOOK_PANEL_DOMAIN}:{WEBHOOK_PANEL_PORT}/{WEBHOOK_PANEL_PATH}"
 

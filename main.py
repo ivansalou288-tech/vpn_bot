@@ -844,12 +844,12 @@ async def add_client_command(message: types.Message):
             api_data["months"] = months
             status_text = f"на {months} месяц{'ев' if months > 1 and months < 5 else 'ев' if months > 4 else ''}"
         
-        # Вызываем API endpoint (ждём основной + удалённый сервер)
+        # Вызываем API endpoint (ждём основной + все удалённые серверы)
         response = requests.post(
             f"{API_BASE_URL}/admin/add_client",
             json=api_data,
             verify=False,
-            timeout=90
+            timeout=120
         )
         
         if response.status_code == 200:
@@ -857,6 +857,7 @@ async def add_client_command(message: types.Message):
             main_ok = result.get("main_success", result.get("success"))
             remote_ok = result.get("remote_success")
             remote_error = result.get("remote_error")
+            remote_results = result.get("remote_results") or []
 
             def _server_line(ok, label, error=None):
                 if ok is True:
@@ -869,15 +870,23 @@ async def add_client_command(message: types.Message):
                     return line
                 return f"⏭ {label}: не проверялся"
 
+            if remote_results:
+                remote_lines = "\n".join(
+                    _server_line(r.get("success"), r.get("label") or r.get("name") or "Удалённый", r.get("error"))
+                    for r in remote_results
+                )
+            else:
+                remote_lines = _server_line(remote_ok, "Удалённый", remote_error)
+
             servers_block = (
                 f"\n\n🖥 <b>Серверы</b>\n"
                 f"{_server_line(main_ok, 'Основной')}\n"
-                f"{_server_line(remote_ok, 'Удалённый', remote_error)}"
+                f"{remote_lines}"
             )
             
             if result.get('success'):
                 if main_ok and remote_ok is False:
-                    title = "⚠️ <b>Клиент добавлен только на основном сервере</b>"
+                    title = "⚠️ <b>Клиент добавлен не на всех серверах</b>"
                 else:
                     title = "✅ <b>Клиент успешно добавлен!</b>"
                 await status_message.edit_text(

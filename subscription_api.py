@@ -231,7 +231,21 @@ def client_sees_subscription_success(subscription_result) -> bool:
 
 
 def remote_fail_admin_note(subscription_result) -> str:
-    if not subscription_result or subscription_result.get("remote_success") is not False:
+    if not subscription_result:
+        return ""
+    results = subscription_result.get("remote_results") or []
+    if results:
+        failed = [r for r in results if not r.get("success")]
+        if not failed:
+            return ""
+        lines = []
+        for r in failed:
+            err = str(r.get("error") or "неизвестная ошибка")
+            safe = err.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+            label = r.get("label") or r.get("name") or "Удалённый"
+            lines.append(f"⚠️ {label}: не создано (<code>{safe[:200]}</code>)")
+        return "\n" + "\n".join(lines)
+    if subscription_result.get("remote_success") is not False:
         return ""
     err = str(subscription_result.get("remote_error") or "неизвестная ошибка")
     safe = err.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
