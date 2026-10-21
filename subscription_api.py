@@ -26,6 +26,7 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 BOT_TOKEN = "8358697144:AAGppsqXjG9S08nGLUpghL-jUfTz9H4gj58"
 OPERATOR_CHAT_ID = [1240656726, 1401086794]
 WEBHOOK_PATH = "/payment/webhook"
+PAYCORE_WEBHOOK_IP = "87.232.67.91"
 
 app = FastAPI(title="VPN Subscription API")
 
@@ -142,13 +143,14 @@ async def create_payment(data: dict):
         months_text = "год" if months == 12 else f"{months} мес."
         operation_type = "Продление" if is_renewal else "Покупка"
         
-        result = create_paycore_payment(
-            amount=float(price),
-            description=f"{operation_type} VPN на {months_text}",
-            user_id=user_id,
-            username=username,
-            time_months=months,
-            is_renewal=is_renewal
+        result = await asyncio.to_thread(
+            create_paycore_payment,
+            float(price),
+            f"{operation_type} VPN на {months_text}",
+            user_id,
+            username,
+            months,
+            is_renewal,
         )
         
         if result.get("success"):
@@ -512,10 +514,17 @@ async def payment_webhook(request: Request):
     """Endpoint для приёма уведомлений от PayCore - автоматически создаёт подписку"""
     print(f"[PayCore Webhook] ========== WEBHOOK REQUEST RECEIVED ==========")
     print(f"[PayCore Webhook] Timestamp: {datetime.now()}")
-    print(f"[PayCore Webhook] Request IP: {request.client.host if hasattr(request, 'client') else 'unknown'}")
+    client_ip = request.client.host if getattr(request, "client", None) else "unknown"
+    print(f"[PayCore Webhook] Request IP: {client_ip}")
     print(f"[PayCore Webhook] Request headers: {dict(request.headers)}")
     print(f"[PayCore Webhook] Request method: {request.method}")
     print(f"[PayCore Webhook] Request URL: {request.url}")
+
+    # Уведомление об оплате принимаем только от PayCore.
+    # manual_trigger — внутренний вызов из /payment/trigger-webhook, не из сети.
+    if client_ip not in (PAYCORE_WEBHOOK_IP, "manual_trigger"):
+        print(f"[PayCore Webhook] Rejected IP: {client_ip}")
+        raise HTTPException(status_code=403, detail="Forbidden")
     
     try:
         # Получаем raw body для логирования
@@ -548,6 +557,20 @@ async def payment_webhook(request: Request):
             if not payment:
                 print(f"[PayCore Webhook] ERROR: Payment not found for order_id: {order_id}")
                 raise HTTPException(status_code=404, detail="Payment not found")
+
+            try:
+                paid_amount = round(float(amount), 2)
+            except (TypeError, ValueError):
+                paid_amount = None
+            expected_amount = round(float(payment.amount), 2)
+            if paid_amount is None or paid_amount + 0.009 < expected_amount:
+                print(
+                    f"[PayCore Webhook] Amount mismatch: paid={amount}, expected={expected_amount}, order={order_id}"
+                )
+                payment.status = "amount_mismatch"
+                payment.updated_at = datetime.now(timezone.utc)
+                db.commit()
+                return {"status": "ignored", "message": "Amount mismatch"}
 
             payment_key = f"sbp_{payment.order_id}"
             if not try_claim_subscription_processing(payment_key, payment.user_id, "sbp"):

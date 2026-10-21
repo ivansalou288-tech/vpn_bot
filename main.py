@@ -1,5 +1,6 @@
 import asyncio
 import datetime
+import html
 import json
 import os
 import re
@@ -1412,7 +1413,7 @@ async def pay_crypto_callback(callback: types.CallbackQuery):
             parse_mode=ParseMode.HTML
         )
     else:
-        error_msg = result.get('error', 'Неизвестная ошибка')
+        error_msg = html.escape(str(result.get('error', 'Неизвестная ошибка')))
         await callback.message.answer(
             f"<tg-emoji emoji-id='5411225014148014586'>❌</tg-emoji> <b>Ошибка создания платежа</b>\n\n"
             f"Не удалось создать платёж: {error_msg}\n\n"
@@ -1581,14 +1582,16 @@ async def process_sbp_payment(message, user_id, username, time_months, price_rub
     
     print(f"[BOT] Starting SBP payment: user={user_id}, amount={price_rubles}, type={operation_type}")
     
-    # Создаём платёж через PayCore API
-    result = create_paycore_payment(
-        amount=float(price_rubles),
-        description=f"{operation_type} VPN на {months_text}",
-        user_id=user_id,
-        username=username,
-        time_months=time_months,
-        is_renewal=is_renewal
+    # Запрос к PayCore синхронный — уводим его из event loop, иначе бот
+    # замирает на таймауте и Telegram отклоняет следующие callback.
+    result = await asyncio.to_thread(
+        create_paycore_payment,
+        float(price_rubles),
+        f"{operation_type} VPN на {months_text}",
+        user_id,
+        username,
+        time_months,
+        is_renewal,
     )
     
     print(f"[BOT] PayCore result: {result}")
@@ -1619,7 +1622,7 @@ async def process_sbp_payment(message, user_id, username, time_months, price_rub
             print(f"[BOT] Message ID {sent_message.message_id} saved for order {order_id}")
     else:
         # Ошибка создания платежа
-        error_msg = result.get('error', 'Неизвестная ошибка')
+        error_msg = html.escape(str(result.get('error', 'Неизвестная ошибка')))
         status_code = result.get('status_code', 'N/A')
         full_response = result.get('full_response', {})
         print(f"[BOT] Payment creation FAILED: error='{error_msg}', status={status_code}, full_response={full_response}")
@@ -2152,7 +2155,7 @@ async def renew_pay_crypto_callback(callback: types.CallbackQuery):
             parse_mode=ParseMode.HTML
         )
     else:
-        error_msg = result.get('error', 'Неизвестная ошибка')
+        error_msg = html.escape(str(result.get('error', 'Неизвестная ошибка')))
         await callback.message.answer(
             f"<tg-emoji emoji-id='5411225014148014586'>❌</tg-emoji> <b>Ошибка создания платежа</b>\n\n"
             f"Не удалось создать платёж: {error_msg}\n\n"

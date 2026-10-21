@@ -22,9 +22,12 @@ from aiogram import Bot
 from aiogram.enums import ParseMode
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
-# Получаем токен из переменной окружения или используем дефолтный
-PAYCORE_API_KEY ='paycore__kzCrJ9vpN0pF7dkM%lc2D5V7/rKfbbV^ftafi%PXhH^='
-PAYCORE_API_URL = "https://pay.pay-core.ru/api/init"
+# https://api.payuc.io/docs/ — ключ можно переопределить через PAYCORE_API_KEY
+PAYCORE_API_KEY = os.getenv(
+    "PAYCORE_API_KEY",
+    "paycore__aoY@hgXzybD0q7R2aTr5bb/eq^8zDx#6x/lfRhp7/ww=",
+)
+PAYCORE_API_URL = os.getenv("PAYCORE_API_URL", "https://api.payuc.io/api/init")
 WEBHOOK_URL = webhook_url()
 BOT_TOKEN = "8358697144:AAGppsqXjG9S08nGLUpghL-jUfTz9H4gj58"
 OPERATOR_CHAT_ID = [1240656726, 1401086794]
@@ -140,43 +143,42 @@ def create_paycore_payment(amount: float, description: str, user_id: int, userna
         "X-Api-Key": PAYCORE_API_KEY
     }
     
+    # Новый API принимает только эти поля. order_id выдаёт PayCore в ответе,
+    # данные пользователя остаются в нашей БД.
     data = {
         "method": "sbp",
         "amount": amount,
         "description": description,
         "returnLink": WEBHOOK_URL,
-        "orderId": order_id,
-        "metadata": {
-            "user_id": user_id,
-            "username": username,
-            "time_months": time_months,
-            "is_renewal": is_renewal
-        }
     }
     
     print(f"[PayCore] ========== CREATING PAYMENT ==========")
     print(f"[PayCore] Webhook URL (returnLink): {WEBHOOK_URL}")
     print(f"[PayCore] Request URL: {PAYCORE_API_URL}")
-    print(f"[PayCore] Request headers: {headers}")
     print(f"[PayCore] Request data: {data}")
-    print(f"[PayCore] Webhook accessibility check: {webhook_url()}")
     
     try:
         response = requests.post(PAYCORE_API_URL, json=data, headers=headers, timeout=30)
         print(f"[PayCore] Response status: {response.status_code}")
         print(f"[PayCore] Response body: {response.text}")
         
-        response_data = response.json()
+        try:
+            response_data = response.json()
+        except ValueError:
+            response_data = None
         print(f"[PayCore] Parsed response: {response_data}")
         
-        if response.status_code == 200 and response_data.get("url"):
-            print(f"[PayCore] Payment created successfully, order_id: {order_id}")
+        paycore_order_id = response_data.get("order_id") if isinstance(response_data, dict) else None
+        payment_url = response_data.get("url") if isinstance(response_data, dict) else None
+        
+        if response.status_code == 200 and payment_url and paycore_order_id:
+            print(f"[PayCore] Payment created successfully, order_id: {order_id}, paycore_order_id: {paycore_order_id}")
             # Сохраняем платёж в БД
             db = SessionLocal()
             try:
                 payment = Payment(
                     order_id=order_id,
-                    paycore_order_id=response_data.get("order_id"),  # Сохраняем PayCore ID
+                    paycore_order_id=str(paycore_order_id),
                     amount=amount,
                     method="sbp",
                     user_id=user_id,
@@ -198,22 +200,38 @@ def create_paycore_payment(amount: float, description: str, user_id: int, userna
             finally:
                 db.close()
         else:
-            error_msg = response_data.get("message", response_data.get("error", "Unknown error"))
+            if isinstance(response_data, dict):
+                error_msg = response_data.get("message") or response_data.get("error") or response.text
+            else:
+                error_msg = response.text
+            error_msg = " ".join(str(error_msg or "Unknown error").split())[:300]
             print(f"[PayCore] Error creating payment: {error_msg}, status: {response.status_code}")
             return {
                 "success": False,
                 "error": error_msg,
                 "status_code": response.status_code,
-                "full_response": response_data
+                "full_response": response_data if isinstance(response_data, dict) else {}
             }
             
+    except requests.Timeout:
+        print("[PayCore] Payment provider timed out")
+        return {
+            "success": False,
+            "error": "платёжный сервис не отвечает"
+        }
+    except requests.ConnectionError as e:
+        print(f"[PayCore] Connection error: {e}")
+        return {
+            "success": False,
+            "error": "нет соединения с платёжным сервисом"
+        }
     except Exception as e:
-        print(f"[PayCore] Exception during payment creation: {str(e)}")
+        print(f"[PayCore] Exception during payment creation: {e}")
         import traceback
         traceback.print_exc()
         return {
             "success": False,
-            "error": str(e)
+            "error": "не удалось создать платёж"
         }
 
 def update_payment_message_id(order_id: str, message_id: int):

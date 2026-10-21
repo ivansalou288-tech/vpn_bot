@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Optional, Dict, Any
 
 # CryptoBot API Configuration
-CRYPTO_BOT_API_TOKEN = "592112:AASlTwWTtU8pZMTxNY3u9P5bXAL1XYVG3YY"
+CRYPTO_BOT_API_TOKEN = "656289:AAANjNg1vL6Vl4U7CdHbKiVfSfrquxUYQsf"
 CRYPTO_BOT_API_URL = "https://pay.crypt.bot/api"
 RUB_TO_USD_RATE = 70  # Курс: 70 рублей = 1 USD
 
