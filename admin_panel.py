@@ -233,7 +233,7 @@ def _sub_view():
         "<b>Ссылка подписки</b>\n\n"
         f"Бот выдаёт: <code>{_esc(base)}/ID</code>\n"
         f"Happ: <code>{_esc(settings.happ_link('ID'))}</code>\n\n"
-        f"Файл /var/www/{_esc(domain)}/index.html:\n{file_line}"
+        f"Файл <code>{_esc(settings.active_index_path(domain))}</code>:\n{file_line}"
     )
     markup = _kb(
         [
@@ -248,7 +248,7 @@ def _sub_view():
 def _index_view():
     data = settings.get()
     domain = data["web_domain"]
-    path = f"/var/www/{domain}/index.html"
+    path = settings.active_index_path(domain)
     ok, found = settings.read_index_subscription_base(domain)
     file_line = f"<code>{_esc(found)}</code>" if ok else _esc(found)
     text = (
@@ -651,7 +651,7 @@ async def admin_index_edit(callback: CallbackQuery, state: FSMContext):
         callback,
         "<b>Ссылка в index.html</b>\n\n"
         "Пришлите адрес подписки без ID. Он заменит https://…/sub/ в файле\n"
-        f"<code>/var/www/{_esc(settings.get()['web_domain'])}/index.html</code>\n\n"
+        f"<code>{_esc(settings.active_index_path(settings.get()['web_domain']))}</code>\n\n"
         "Ссылка, которую бот копирует клиенту, при этом не меняется.",
         _back("admin_index_html"),
     )
@@ -889,7 +889,7 @@ async def admin_text(message: Message, state: FSMContext):
             await state.clear()
             await _say(
                 message,
-                f"Домен: <code>{_esc(folder)}</code>\nФайл: <code>/var/www/{_esc(folder)}/index.html</code>",
+                f"Домен: <code>{_esc(folder)}</code>\nФайл: <code>{_esc(settings.active_index_path(folder))}</code>",
                 _back("admin_index_html", "К index.html"),
             )
             return

@@ -372,15 +372,37 @@ def clean_token(value: str) -> str:
     return value
 
 
+FALLBACK_INDEX_PATH = "/var/www/html/index.htm"
+
+
 def index_html_path(domain: str) -> str:
     folder = clean_web_folder(domain)
     return f"/var/www/{folder}/index.html"
 
 
+def resolve_index_path(domain: str, path: str = None):
+    """Сначала /var/www/домен/index.html, если его нет — /var/www/html/index.htm."""
+    if path:
+        if os.path.isfile(path):
+            return path, None
+        return None, f"Файл не найден: {path}"
+    primary = index_html_path(domain)
+    if os.path.isfile(primary):
+        return primary, None
+    if os.path.isfile(FALLBACK_INDEX_PATH):
+        return FALLBACK_INDEX_PATH, None
+    return None, f"Файл не найден: {primary} и {FALLBACK_INDEX_PATH}"
+
+
+def active_index_path(domain: str) -> str:
+    found, _error = resolve_index_path(domain)
+    return found or index_html_path(domain)
+
+
 def read_index_subscription_base(domain: str, path: str = None):
-    file_path = path or index_html_path(domain)
-    if not os.path.isfile(file_path):
-        return False, f"Файл не найден: {file_path}"
+    file_path, error = resolve_index_path(domain, path)
+    if not file_path:
+        return False, error
     try:
         with open(file_path, "r", encoding="utf-8") as fh:
             text = fh.read()
@@ -388,22 +410,22 @@ def read_index_subscription_base(domain: str, path: str = None):
         return False, f"Не удалось прочитать {file_path}: {exc}"
     match = _SUB_URL_RE.search(text)
     if not match:
-        return False, "В index.html нет ссылки вида https://…/sub/"
+        return False, f"В {file_path} нет ссылки вида https://…/sub/"
     return True, match.group(0).rstrip("/")
 
 
 def write_index_subscription_base(domain: str, new_base: str, path: str = None):
-    file_path = path or index_html_path(domain)
+    file_path, error = resolve_index_path(domain, path)
     base = normalize_subscription_base(new_base).rstrip("/") + "/"
-    if not os.path.isfile(file_path):
-        return False, f"Файл не найден: {file_path}"
+    if not file_path:
+        return False, error
     try:
         with open(file_path, "r", encoding="utf-8") as fh:
             text = fh.read()
     except OSError as exc:
         return False, f"Не удалось прочитать {file_path}: {exc}"
     if not _SUB_URL_RE.search(text):
-        return False, "В index.html нет ссылки вида https://…/sub/"
+        return False, f"В {file_path} нет ссылки вида https://…/sub/"
     updated, count = _SUB_URL_RE.subn(base, text)
     tmp = file_path + ".tmp"
     try:
