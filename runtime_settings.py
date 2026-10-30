@@ -372,7 +372,7 @@ def clean_token(value: str) -> str:
     return value
 
 
-FALLBACK_INDEX_PATH = "/var/www/html/index.htm"
+FALLBACK_INDEX_PATH = "/var/www/html/index.html"
 
 
 def index_html_path(domain: str) -> str:
@@ -381,7 +381,7 @@ def index_html_path(domain: str) -> str:
 
 
 def resolve_index_path(domain: str, path: str = None):
-    """Сначала /var/www/домен/index.html, если его нет — /var/www/html/index.htm."""
+    """Сначала /var/www/домен/index.html, если его нет — /var/www/html/index.html."""
     if path:
         if os.path.isfile(path):
             return path, None
