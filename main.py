@@ -588,7 +588,7 @@ instruction_btn = InlineKeyboardButton(
 app_btn = InlineKeyboardButton(text="Приложение", callback_data="app", style="primary")
 buy_subscription_btn = InlineKeyboardButton(text="Купить подписку", callback_data="buy_subscription", style="primary", icon_custom_emoji_id='5271604874419647061')
 referral_btn = InlineKeyboardButton(text="Реферальная программа", callback_data="referral", style="primary", icon_custom_emoji_id='5416081784641168838')
-admin_btn = InlineKeyboardButton(text="⚙️ Админ панель", callback_data="admin_panel", style="secondary")
+admin_btn = InlineKeyboardButton(text="⚙️ Админ панель", callback_data="admin_panel", style="primary")
 
 # Создаем inline клавиатуру (кнопки в разных строках)
 keyboard = InlineKeyboardMarkup(
