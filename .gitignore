@@ -4,3 +4,4 @@ venv/
 .venv/
 secret.py
 src-login.json
+bot_settings.json

@@ -13,6 +13,12 @@ from config import PANEL_BASE_URL, PANEL_DOMAIN, PANEL_PORT, PANEL_PATH, REMOTE_
 
 BASE_URL = PANEL_BASE_URL
 
+
+def panel_base_url() -> str:
+    import runtime_settings
+    runtime_settings.apply_if_stale()
+    return BASE_URL
+
 import secret
 
 admn_username = secret.user
@@ -32,6 +38,8 @@ def generate_sub_prefix(length=8):
 
 def get_headers():
     """Return headers with Bearer token authentication"""
+    import runtime_settings
+    runtime_settings.apply_if_stale()
     return {
         "Authorization": f"Bearer {api_token}",
         "Accept": "application/json",
@@ -40,7 +48,7 @@ def get_headers():
 
 def get_clients():
     """Get list of clients using Bearer token authentication"""
-    api_url = f"{BASE_URL}/panel/api/inbounds/list"
+    api_url = f"{panel_base_url()}/panel/api/inbounds/list"
     
     print(f"\n[get_clients] Получаем список клиентов с API токеном...")
     print(f"[get_clients] URL: {api_url}")
@@ -99,7 +107,7 @@ def add_inbrouds(name: str, client_name: str, client_id: str):
 
     try:
         headers = get_headers()
-        response = requests.post(f"{BASE_URL}/panel/api/inbounds/add", json=data, headers=headers, verify=False)
+        response = requests.post(f"{panel_base_url()}/panel/api/inbounds/add", json=data, headers=headers, verify=False)
         
         print(data)
         print(f"Status Code: {response.status_code}")
@@ -116,7 +124,7 @@ def getNewmldsa65():
     """Get new mldsa65 keys using Bearer token authentication"""
     try:
         headers = get_headers()
-        response = requests.get(f"{BASE_URL}/panel/api/server/getNewmldsa65", headers=headers, verify=False)
+        response = requests.get(f"{panel_base_url()}/panel/api/server/getNewmldsa65", headers=headers, verify=False)
         
         result = response.json()
         if result.get('success'):
@@ -146,7 +154,7 @@ def dell_client(inboundId: int, telegramId: int):
         headers = get_headers()
         enc = quote(str(email), safe="")
         response = requests.post(
-            f"{BASE_URL}/panel/api/inbounds/{inboundId}/delClientByEmail/{enc}",
+            f"{panel_base_url()}/panel/api/inbounds/{inboundId}/delClientByEmail/{enc}",
             headers=headers,
             verify=False,
         )
@@ -162,7 +170,7 @@ def getNewX25519Cert():
     """Get new X25519 certificate using Bearer token authentication"""
     try:
         headers = get_headers()
-        response = requests.get(f"{BASE_URL}/panel/api/server/getNewX25519Cert", headers=headers, verify=False)
+        response = requests.get(f"{panel_base_url()}/panel/api/server/getNewX25519Cert", headers=headers, verify=False)
         
         result = response.json()
         if result.get('success'):
@@ -293,7 +301,7 @@ def panel_del_client_by_email(session, inbound_id, email):
         return {"success": False, "msg": "empty email"}
     enc = quote(str(email), safe="")
 
-    url = f"{BASE_URL}/panel/api/clients/del/{enc}"
+    url = f"{panel_base_url()}/panel/api/clients/del/{enc}"
     print(f"[API] DELETE client (new API): {url}")
     r = session.post(url, verify=False)
     print(f"[API] DELETE response: {r.status_code} - {r.text[:300]}")
@@ -305,7 +313,7 @@ def panel_del_client_by_email(session, inbound_id, email):
         except json.JSONDecodeError:
             return {"success": True, "msg": r.text}
 
-    url_legacy = f"{BASE_URL}/panel/api/inbounds/{inbound_id}/delClientByEmail/{enc}"
+    url_legacy = f"{panel_base_url()}/panel/api/inbounds/{inbound_id}/delClientByEmail/{enc}"
     print(f"[API] DELETE client (legacy API): {url_legacy}")
     r = session.post(url_legacy, verify=False)
     print(f"[API] DELETE legacy response: {r.status_code} - {r.text[:300]}")
@@ -322,7 +330,7 @@ def panel_update_client_by_email(session, email, client_data, inbound_ids=None):
     if not email:
         return {"success": False, "msg": "empty email"}
     enc = quote(str(email), safe="")
-    url = f"{BASE_URL}/panel/api/clients/update/{enc}"
+    url = f"{panel_base_url()}/panel/api/clients/update/{enc}"
     if inbound_ids:
         url += "?inboundIds=" + ",".join(str(i) for i in inbound_ids)
 
@@ -351,7 +359,7 @@ def panel_add_client(client_dict, inbound_ids):
         "inboundIds": list(inbound_ids),
     }
 
-    url = f"{BASE_URL}/panel/api/clients/add"
+    url = f"{panel_base_url()}/panel/api/clients/add"
     print(f"[API] POST clients/add (batch): {url}")
     print(f"[API] Body: {json.dumps(body, indent=2)}")
 
@@ -548,6 +556,8 @@ def _post_remote_webhook(server, path: str, payload: dict, timeout: int = 60):
 
 def send_webhooks_to_all_remotes(path: str, payload: dict, timeout: int = 60):
     """Параллельно дергает webhook на всех удалённых серверах."""
+    import runtime_settings
+    runtime_settings.apply_if_stale()
     servers = list(REMOTE_SERVERS or [])
     if not servers:
         return {"success": True, "results": [], "error": None}
@@ -721,7 +731,7 @@ def panel_update_inbound_client(session, inbound_id, protocol, route_client_id, 
         return {"success": False, "error": "No email in updated client"}
 
     enc_email = quote(str(client_email), safe="")
-    url = f"{BASE_URL}/panel/api/inbounds/{inbound_id}/updateClient/{enc_email}"
+    url = f"{panel_base_url()}/panel/api/inbounds/{inbound_id}/updateClient/{enc_email}"
 
     patch = {k: v for k, v in settings_obj.items() if k != "clients"}
     patch["clients"] = [updated_client]
@@ -1106,7 +1116,7 @@ def check_cantfree(tg_id):
         headers = get_headers()
         
         # Get CantFree users
-        cantfree_response = requests.get(f"{BASE_URL}/cantfree", headers=headers, verify=False)
+        cantfree_response = requests.get(f"{panel_base_url()}/cantfree", headers=headers, verify=False)
         if cantfree_response.status_code == 200:
             cantfree_users = cantfree_response.json()
             
@@ -1133,7 +1143,7 @@ def add_to_cantfree(tg_id, username):
             "username": username or f"user_{tg_id}"
         }
         
-        add_response = requests.post(f"{BASE_URL}/cantfree", json=cantfree_data, headers=headers, verify=False)
+        add_response = requests.post(f"{panel_base_url()}/cantfree", json=cantfree_data, headers=headers, verify=False)
         if add_response.status_code == 200:
             return {"success": True, "message": "User added to CantFree"}
         else:

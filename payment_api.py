@@ -129,6 +129,8 @@ def set_bot_instance(bot):
 
 def create_paycore_payment(amount: float, description: str, user_id: int, username: str = None, time_months: int = 1, is_renewal: bool = False):
     """Создаёт платёж через PayCore API"""
+    import runtime_settings
+    runtime_settings.apply_if_stale()
     
     print(f"[PayCore] Creating payment: amount={amount}, user_id={user_id}, username={username}")
     

@@ -20,7 +20,11 @@ from sqlalchemy.exc import IntegrityError
 from aiogram import Bot, Dispatcher, Router, types, F
 from aiogram.filters import Command
 from aiogram.enums import ParseMode
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.utils.keyboard import InlineKeyboardMarkup, InlineKeyboardButton
+from admin_panel import admin_keyboard, router as admin_router
+import runtime_settings
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
@@ -174,6 +178,16 @@ async def set_price(time_months: int, price_rubles: int):
             print(f"Создана новая цена для {time_months} месяцев: {price_rubles}₽")
         
         return price_record
+
+async def delete_price(time_months: int) -> bool:
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(select(Price).filter(Price.time == time_months))
+        price_record = result.scalar_one_or_none()
+        if price_record is None:
+            return False
+        await session.delete(price_record)
+        await session.commit()
+        return True
 
 async def check_channel_subscription(user_id: int, bot: Bot) -> bool:
     """Проверяет подписан ли пользователь на канал"""
@@ -588,47 +602,9 @@ keyboard = InlineKeyboardMarkup(
     ]
 )
 
-# Админ клавиатура
-admin_keyboard = InlineKeyboardMarkup(
-    inline_keyboard=[
-        [InlineKeyboardButton(text="💰 Цены", callback_data="admin_prices", style="primary")],
-        [InlineKeyboardButton(text="📝 Информация", callback_data="admin_info", style="primary")],
-        [InlineKeyboardButton(text="📞 Контакты", callback_data="admin_contacts", style="primary")],
-        [InlineKeyboardButton(text="👤 Добавить клиента", callback_data="admin_add_client", style="primary")],
-        [InlineKeyboardButton(text="📢 Рассылка", callback_data="admin_broadcast", style="primary")],
-        [InlineKeyboardButton(text="�️ Удалить из CantFree", callback_data="admin_remove_cantfree", style="primary")],
-        [InlineKeyboardButton(text="� Назад", callback_data="back_to_main", style="primary")]
-    ]
-)
-
-# Клавиатура управления ценами
-prices_management_keyboard = InlineKeyboardMarkup(
-    inline_keyboard=[
-        [InlineKeyboardButton(text="➕ Добавить цену", callback_data="add_price", style="primary")],
-        [InlineKeyboardButton(text="✏️ Изменить цену", callback_data="edit_price", style="primary")],
-        [InlineKeyboardButton(text="🗑️ Удалить цену", callback_data="delete_price")],
-        [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_panel", style="primary")]
-    ]
-)
-
-# Клавиатура управления информацией
-info_management_keyboard = InlineKeyboardMarkup(
-    inline_keyboard=[
-        [InlineKeyboardButton(text="✏️ Изменить информацию", callback_data="edit_info", style="primary")],
-        [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_panel", style="primary")]
-    ]
-)
-
-# Клавиатура управления контактами
-contacts_management_keyboard = InlineKeyboardMarkup(
-    inline_keyboard=[
-        [InlineKeyboardButton(text="✏️ Изменить контакты", callback_data="edit_contacts", style="primary")],
-        [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_panel", style="primary")]
-    ]
-)
-
 @router.message(Command("start"))
-async def start(message: types.Message):
+async def start(message: types.Message, state: FSMContext):
+    await state.clear()
     # Добавляем/обновляем пользователя в базе данных
     await add_or_update_user(message.from_user)
     
@@ -648,7 +624,7 @@ async def start(message: types.Message):
     if is_admin(message.from_user.id):
         await message.answer(
             "⚙️ <b>Админ панель</b>\n\n"
-            "Выберите действие:",
+            "Выберите раздел. Текст записывается только после кнопки изменения, обычные сообщения бот больше не трогает.",
             reply_markup=admin_keyboard,
             parse_mode=ParseMode.HTML
         )
@@ -685,8 +661,9 @@ async def start(message: types.Message):
 
 
 @router.message(Command("merch"))
-async def merch_stats_command(message: types.Message):
+async def merch_stats_command(message: types.Message, state: FSMContext):
     """Статистика по реферальной ссылке ?start=merch (только для админа)"""
+    await state.clear()
     if not is_admin(message.from_user.id):
         return
 
@@ -764,72 +741,7 @@ async def add_to_cantfree_local(user_id: int, username: str):
             await session.rollback()
             return {"success": False, "error": str(e)}
 
-@router.message(Command("add_client"))
-async def add_client_command(message: types.Message):
-    """Добавляет клиента по TG ID (только для админа)"""
-    if not is_admin(message.from_user.id):
-        await message.answer("⛔ У вас нет прав для выполнения этой команды.")
-        return
-    
-    # Получаем аргументы команды
-    args = message.text.split()
-    
-    if len(args) < 2:
-        await message.answer(
-            "👤 <b>Добавление клиента</b>\n\n"
-            "Использование:\n"
-            "<code>/add_client TG_ID [месяцы]</code>\n"
-            "<code>/add_client TG_ID [дата]</code>\n\n"
-            "Примеры:\n"
-            "<code>/add_client 8489038592</code> - на 1 месяц\n"
-            "<code>/add_client 8489038592 3</code> - на 3 месяца\n"
-            "<code>/add_client 8489038592 31.12.2024</code> - до 31.12.2024\n\n"
-            "Или просто отправьте TG ID пользователя сообщением.",
-            parse_mode=ParseMode.HTML
-        )
-        return
-    
-    tg_id = args[1]
-    months = 1  # по умолчанию
-    end_date = None
-    
-    if len(args) >= 3:
-        param = args[2]
-        # Проверяем, это дата или количество месяцев
-        if '.' in param and len(param.split('.')) == 3:
-            # Это дата в формате ДД.ММ.ГГГГ
-            try:
-                day, month, year = param.split('.')
-                if len(day) == 1:
-                    day = '0' + day
-                if len(month) == 1:
-                    month = '0' + month
-                if len(year) == 2:
-                    year = '20' + year
-                
-                # Валидация даты
-                import datetime
-                datetime.datetime.strptime(f'{day}.{month}.{year}', '%d.%m.%Y')
-                end_date = f'{day}.{month}.{year}'
-            except ValueError:
-                await message.answer("❌ Неверный формат даты. Используйте ДД.ММ.ГГГГ (например: 31.12.2024)")
-                return
-        else:
-            # Это количество месяцев
-            try:
-                months = int(param)
-            except ValueError:
-                months = 1
-    
-    try:
-        tg_id = int(tg_id)
-    except ValueError:
-        await message.answer("❌ Неверный формат Telegram ID. Используйте только цифры.")
-        return
-    
-    # Показываем статус добавления
-    status_message = await message.answer(f"🔄 Добавляю клиента TG ID: {tg_id}...")
-    
+async def execute_add_client(status_message, tg_id: int, months: int = 1, end_date=None):
     try:
         import requests
         
@@ -925,6 +837,74 @@ async def add_client_command(message: types.Message):
             parse_mode=ParseMode.HTML
         )
 
+@router.message(Command("add_client"))
+async def add_client_command(message: types.Message, state: FSMContext):
+    """Добавляет клиента по TG ID (только для админа)"""
+    await state.clear()
+    if not is_admin(message.from_user.id):
+        await message.answer("⛔ У вас нет прав для выполнения этой команды.")
+        return
+    
+    # Получаем аргументы команды
+    args = message.text.split()
+    
+    if len(args) < 2:
+        await message.answer(
+            "👤 <b>Добавление клиента</b>\n\n"
+            "Использование:\n"
+            "<code>/add_client TG_ID [месяцы]</code>\n"
+            "<code>/add_client TG_ID [дата]</code>\n\n"
+            "Примеры:\n"
+            "<code>/add_client 8489038592</code> - на 1 месяц\n"
+            "<code>/add_client 8489038592 3</code> - на 3 месяца\n"
+            "<code>/add_client 8489038592 31.12.2024</code> - до 31.12.2024\n\n"
+            "Или просто отправьте TG ID пользователя сообщением.",
+            parse_mode=ParseMode.HTML
+        )
+        return
+    
+    tg_id = args[1]
+    months = 1  # по умолчанию
+    end_date = None
+    
+    if len(args) >= 3:
+        param = args[2]
+        # Проверяем, это дата или количество месяцев
+        if '.' in param and len(param.split('.')) == 3:
+            # Это дата в формате ДД.ММ.ГГГГ
+            try:
+                day, month, year = param.split('.')
+                if len(day) == 1:
+                    day = '0' + day
+                if len(month) == 1:
+                    month = '0' + month
+                if len(year) == 2:
+                    year = '20' + year
+                
+                # Валидация даты
+                import datetime
+                datetime.datetime.strptime(f'{day}.{month}.{year}', '%d.%m.%Y')
+                end_date = f'{day}.{month}.{year}'
+            except ValueError:
+                await message.answer("❌ Неверный формат даты. Используйте ДД.ММ.ГГГГ (например: 31.12.2024)")
+                return
+        else:
+            # Это количество месяцев
+            try:
+                months = int(param)
+            except ValueError:
+                months = 1
+    
+    try:
+        tg_id = int(tg_id)
+    except ValueError:
+        await message.answer("❌ Неверный формат Telegram ID. Используйте только цифры.")
+        return
+    
+    status_message = await message.answer(f"🔄 Добавляю клиента TG ID: {tg_id}...")
+    await execute_add_client(status_message, tg_id, months, end_date)
+
+
 @router.callback_query(lambda callback: callback.data == "subscription")
 async def subscription_callback(callback: types.CallbackQuery):
     await callback.answer()
@@ -947,12 +927,12 @@ async def subscription_callback(callback: types.CallbackQuery):
         
         # Создаем клавиатуру только если подписка активна
         if is_enabled:
-            subscription_url = f"https://panel.ezhqpy.ru:4567/sub/{sub_id}"
+            subscription_url = runtime_settings.subscription_link(sub_id)
             subscription_keyboard = InlineKeyboardMarkup(
                 inline_keyboard=[
                     # [InlineKeyboardButton(text="Использовать", url=subscription_url, style="primary", icon_custom_emoji_id='5271604874419647061')],
                     [InlineKeyboardButton(text="Скопировать ссылку", copy_text=CopyTextButton(text=subscription_url))],
-                    [InlineKeyboardButton(text="Happ", url=f"https://{PANEL_DOMAIN}/index.html?sub={sub_id}", style="primary")],
+                    [InlineKeyboardButton(text="Happ", url=runtime_settings.happ_link(sub_id), style="primary")],
                     [InlineKeyboardButton(text="Продлить подписку", callback_data="renew_subscription", style="primary", icon_custom_emoji_id='5231012545799666522')],
                     # [instruction_btn],
                     [InlineKeyboardButton(text="Назад", callback_data="main_menu", style="danger")]
@@ -1139,22 +1119,9 @@ async def select_price_callback(callback: types.CallbackQuery):
 
 
 
-@router.callback_query(lambda callback: callback.data == "admin_remove_cantfree")
-async def admin_remove_cantfree_callback(callback: types.CallbackQuery):
-    await callback.answer()
-    await callback.message.delete()
-    
-    # Запрашиваем TG ID пользователя для удаления
-    await callback.message.answer(
-        "<tg-emoji emoji-id='5406756500108501710'>🗑️</tg-emoji> <b>Удаление из CantFree</b>\n\n"
-        "📝 <b>Отправьте TG ID пользователя для удаления из списка CantFree:</b>\n\n"
-        "<code>/remove_cantfree TG_ID</code>\n\n"
-        "Или просто отправьте TG ID пользователя сообщением.",
-        parse_mode=ParseMode.HTML
-    )
-
 @router.message(lambda message: message.text and message.text.startswith('/remove_cantfree'))
-async def remove_cantfree_command(message: Message):
+async def remove_cantfree_command(message: Message, state: FSMContext):
+    await state.clear()
     # Проверяем права администратора
     if not is_admin(message.from_user.id):
         await message.answer("❌ У вас нет прав администратора.")
@@ -2411,67 +2378,9 @@ async def main_menu_callback(callback: types.CallbackQuery):
         reply_markup=keyboard
     )
 
-@router.callback_query(lambda callback: callback.data == "admin_panel")
-async def admin_panel_callback(callback: types.CallbackQuery):
-    await callback.answer()
-    
-    if is_admin(callback.from_user.id):
-        try:
-            await callback.message.delete()
-        except:
-            pass
-        
-        await callback.message.answer(
-            "⚙️ <b>Админ панель</b>\n\n"
-            "Выберите действие:",
-            reply_markup=admin_keyboard,
-            parse_mode=ParseMode.HTML
-        )
-
-@router.callback_query(lambda callback: callback.data == "admin_prices")
-async def admin_prices_callback(callback: types.CallbackQuery):
-    await callback.answer()
-    
-    if is_admin(callback.from_user.id):
-        try:
-            await callback.message.delete()
-        except:
-            pass
-            
-        prices = await get_all_prices()
-        
-        # Формируем список цен
-        prices_text = "💰 <b>Текущие цены:</b>\n\n"
-        for price in prices:
-            months_text = "год" if price.time == 12 else f"{price.time} месяц{'а' if price.time > 1 and price.time < 5 else 'ев'}"
-            prices_text += f"• {months_text}: {price.price}₽\n"
-        
-        await callback.message.answer(
-            prices_text + "\n\nВыберите действие:",
-            reply_markup=prices_management_keyboard,
-            parse_mode=ParseMode.HTML
-        )
-
-@router.callback_query(lambda callback: callback.data == "admin_info")
-async def admin_info_callback(callback: types.CallbackQuery):
-    await callback.answer()
-    
-    if is_admin(callback.from_user.id):
-        try:
-            await callback.message.delete()
-        except:
-            pass
-            
-        info_text = await get_info()
-        print(info_text)
-        await callback.message.answer(
-            f'📝 <b>Текущая информация:</b>\n\n{info_text}\n\nВыберите действие:',
-            reply_markup=info_management_keyboard,
-            parse_mode=ParseMode.HTML
-        )
-
 @router.message(Command("notify"))
-async def notify_command(message: types.Message):
+async def notify_command(message: types.Message, state: FSMContext):
+    await state.clear()
     if not is_admin(message.from_user.id):
         return
     
@@ -2491,307 +2400,9 @@ async def notify_command(message: types.Message):
     print(f"[NOTIFY] Broadcast completed: {result['success']} successful, {result['errors']} errors")
     await message.answer(f"Рассылка завершена: {result['success']} успешно, {result['errors']} ошибок")
 
-@router.callback_query(lambda callback: callback.data == "admin_contacts")
-async def admin_contacts_callback(callback: types.CallbackQuery):
-    await callback.answer()
-    
-    if is_admin(callback.from_user.id):
-        try:
-            await callback.message.delete()
-        except:
-            pass
-            
-        contact_text = await get_contact()
-        await callback.message.answer(
-            f"📞 <b>Текущие контакты:</b>\n\n{contact_text}\n\nВыберите действие:",
-            reply_markup=contacts_management_keyboard,
-            parse_mode=ParseMode.HTML
-        )
-
-@router.callback_query(lambda callback: callback.data == "admin_add_client")
-async def admin_add_client_callback(callback: types.CallbackQuery):
-    await callback.answer()
-    
-    if is_admin(callback.from_user.id):
-        try:
-            await callback.message.delete()
-        except:
-            pass
-        
-        await callback.message.answer(
-            "👤 <b>Добавление клиента</b>\n\n"
-            "Отправьте Telegram ID пользователя:\n\n"
-            "Пример: <code>8489038592</code>\n\n"
-            "Или используйте команду:\n"
-            "<code>/add_client 8489038592 1</code>\n"
-            "где 1 - количество месяцев",
-            parse_mode=ParseMode.HTML
-        )
-
-@router.callback_query(lambda callback: callback.data == "admin_broadcast")
-async def admin_broadcast_callback(callback: types.CallbackQuery):
-    await callback.answer()
-    
-    if is_admin(callback.from_user.id):
-        try:
-            await callback.message.delete()
-        except:
-            pass
-            
-        await callback.message.answer(
-            "📢 <b>Рассылка сообщений</b>\n\n"
-            "Используйте команду:\n"
-            "<code>/notify Ваше сообщение</code>\n\n"
-            "Пример:\n"
-            "<code>/notify 🔔 Внимание! Проводятся технические работы...</code>\n\n"
-            "Поддерживаются Telegram эмодзи и HTML-теги.",
-            parse_mode=ParseMode.HTML
-        )
-
-@router.callback_query(lambda callback: callback.data == "edit_info")
-async def edit_info_callback(callback: types.CallbackQuery):
-    await callback.answer()
-    
-    if is_admin(callback.from_user.id):
-        # Устанавливаем состояние редактирования информации
-        admin_states[callback.from_user.id] = "editing_info"
-        
-        await callback.message.answer(
-            "📝 <b>Редактирование информации</b>\n\n"
-            "Отправьте новое сообщение для информации.\n"
-            "Можно использовать эмодзи и форматирование.",
-            reply_markup=InlineKeyboardMarkup(
-                inline_keyboard=[
-                    [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_info", style="primary")]
-                ]
-            ),
-            parse_mode=ParseMode.HTML
-        )
-
-@router.callback_query(lambda callback: callback.data == "edit_contacts")
-async def edit_contacts_callback(callback: types.CallbackQuery):
-    await callback.answer()
-    
-    if is_admin(callback.from_user.id):
-        # Устанавливаем состояние редактирования контактов
-        admin_states[callback.from_user.id] = "editing_contacts"
-        
-        try:
-            await callback.message.delete()
-        except:
-            pass
-            
-        await callback.message.answer(
-            "📞 <b>Редактирование контактов</b>\n\n"
-            "Отправьте новое сообщение для контактов.\n"
-            "Можно использовать эмодзи и форматирование.",
-            reply_markup=InlineKeyboardMarkup(
-                inline_keyboard=[
-                    [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_contacts", style="primary")]
-                ]
-            ),
-            parse_mode=ParseMode.HTML
-        )
-
-@router.callback_query(lambda callback: callback.data == "add_price")
-async def add_price_callback(callback: types.CallbackQuery):
-    await callback.answer()
-    
-    if is_admin(callback.from_user.id):
-        try:
-            await callback.message.delete()
-        except:
-            pass
-            
-        await callback.message.answer(
-            "➕ <b>Добавление цены</b>\n\n"
-            "Отправьте в формате:\n"
-            "<code>месяцы цена</code>\n\n"
-            "Например: <code>3 500</code>",
-            reply_markup=InlineKeyboardMarkup(
-                inline_keyboard=[
-                    [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_prices", style="primary"),
-                     InlineKeyboardButton(text="➕ Добавить", callback_data="add_price_confirm", style="primary")]
-                ]
-            ),
-            parse_mode=ParseMode.HTML
-        )
-
-@router.callback_query(lambda callback: callback.data == "edit_price")
-async def edit_price_callback(callback: types.CallbackQuery):
-    await callback.answer()
-    
-    if is_admin(callback.from_user.id):
-        try:
-            await callback.message.delete()
-        except:
-            pass
-            
-        await callback.message.answer(
-            "✏️ <b>Изменение цены</b>\n\n"
-            "Отправьте в формате:\n"
-            "<code>месяцы новая_цена</code>\n\n"
-            "Например: <code>3 600</code>",
-            reply_markup=InlineKeyboardMarkup(
-                inline_keyboard=[
-                    [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_prices", style="primary"),
-                     InlineKeyboardButton(text="✏️ Изменить", callback_data="edit_price_confirm", style="primary")]
-                ]
-            ),
-            parse_mode=ParseMode.HTML
-        )
-
-@router.callback_query(lambda callback: callback.data == "delete_price")
-async def delete_price_callback(callback: types.CallbackQuery):
-    await callback.answer()
-    
-    if is_admin(callback.from_user.id):
-        try:
-            await callback.message.delete()
-        except:
-            pass
-            
-        await callback.message.answer(
-            "🗑️ <b>Удаление цены</b>\n\n"
-            "Отправьте количество месяцев для удаления:\n\n"
-            "Например: <code>3</code>",
-            reply_markup=InlineKeyboardMarkup(
-                inline_keyboard=[
-                    [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_prices", style="primary"),
-                     InlineKeyboardButton(text="🗑️ Удалить", callback_data="delete_price_confirm", style="primary")]
-                    [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_prices", style="primary")]
-                ]
-            ),
-            parse_mode=ParseMode.HTML
-        )
-
-# Глобальное хранилище состояний админа
-admin_states = {}
-
-@router.message()
-async def handle_admin_messages(message: types.Message):
-    """Обработка сообщений от админа для редактирования"""
-    if is_admin(message.from_user.id):
-        # Если это текстовое сообщение и не команда
-        if message.text and not message.text.startswith('/'):
-            text_parts = message.text.strip().split()
-            
-            # Сначала проверяем состояние админа
-            user_id = message.from_user.id
-            state = admin_states.get(user_id)
-            
-            if state == "editing_info":
-                # Очищаем и исправляем текст от неправильных эмодзи перед сохранением
-                clean_text = message.html_text  # Получаем текст с HTML-тегами
-                
-                # Исправляем неправильные теги <tg-emoji> на правильные
-                # Заменяем emoji_id на emoji-id
-                clean_text = clean_text.replace('emoji_id=', 'emoji-id=')
-                
-                # Обновляем только информацию
-                await create_or_update_info(clean_text)
-                await message.answer(
-                    "✅ <b>Информация обновлена!</b>\n\n"
-                    f"<b>Новый текст:</b>\n{clean_text}",
-                    parse_mode=ParseMode.HTML
-                )
-                # Сбрасываем состояние
-                admin_states[user_id] = None
-                
-                # Удаляем исходное сообщение через небольшую задержку
-                await asyncio.sleep(1)
-                try:
-                    await message.delete()
-                except:
-                    pass
-                    
-            elif state == "editing_contacts":
-                # Очищаем и исправляем текст от неправильных эмодзи перед сохранением
-                clean_text = message.html_text  # Получаем текст с HTML-тегами
-                
-                # Исправляем неправильные теги <tg-emoji> на правильные
-                # Заменяем emoji_id на emoji-id
-                clean_text = clean_text.replace('emoji_id=', 'emoji-id=')
-                
-                # Обновляем только контакты
-                await create_or_update_contact(clean_text)
-                await message.answer(
-                    "✅ <b>Контакты обновлены!</b>\n\n"
-                    f"<b>Новый текст:</b>\n{clean_text}",
-                    parse_mode=ParseMode.HTML
-                )
-                # Сбрасываем состояние
-                admin_states[user_id] = None
-                
-                # Удаляем исходное сообщение через небольшую задержку
-                await asyncio.sleep(1)
-                try:
-                    await message.delete()
-                except:
-                    pass
-            
-            # Если нет состояния, обрабатываем цены и прочее
-            else:
-                # Обработка добавления цены
-                if len(text_parts) == 2 and text_parts[0].isdigit() and text_parts[1].isdigit():
-                    months = int(text_parts[0])
-                    price = int(text_parts[1])
-                    await set_price(months, price)
-                    await message.answer(
-                        f"✅ <b>Цена добавлена!</b>\n\n"
-                        f"📅 Период: {months} мес.\n"
-                        f"💰 Цена: {price}₽",
-                        parse_mode=ParseMode.HTML
-                    )
-                
-                # Обработка изменения цены
-                elif len(text_parts) == 2 and text_parts[0].isdigit() and text_parts[1].isdigit():
-                    months = int(text_parts[0])
-                    price = int(text_parts[1])
-                    await set_price(months, price)
-                    await message.answer(
-                        f"✅ <b>Цена обновлена!</b>\n\n"
-                        f"📅 Период: {months} мес.\n"
-                        f"💰 Новая цена: {price}₽",
-                        parse_mode=ParseMode.HTML
-                    )
-                
-                # Обработка удаления цены
-                elif len(text_parts) == 1 and text_parts[0].isdigit():
-                    months = int(text_parts[0])
-                    # Здесь нужно добавить функцию удаления цены
-                    await message.answer(
-                        f"🗑️ <b>Удаление цены для {months} месяцев</b>\n\n"
-                        "Функция удаления будет добавлена позже.",
-                        parse_mode=ParseMode.HTML
-                    )
-                
-                # Иначе считаем что это текст для информации по умолчанию
-                else:
-                    # Очищаем и исправляем текст от неправильных эмодзи перед сохранением
-                    clean_text = message.html_text  # Получаем текст с HTML-тегами
-                    
-                    # Исправляем неправильные теги <tg-emoji> на правильные
-                    # Заменяем emoji_id на emoji-id
-                    clean_text = clean_text.replace('emoji_id=', 'emoji-id=')
-                    
-                    # По умолчанию обновляем информацию
-                    await create_or_update_info(clean_text)
-                    await message.answer(
-                        "✅ <b>Информация обновлена!</b>\n\n"
-                        f"<b>Новый текст:</b>\n{clean_text}",
-                        parse_mode=ParseMode.HTML
-                    )
-                    
-                    # Удаляем исходное сообщение через небольшую задержку
-                    await asyncio.sleep(1)
-                    try:
-                        await message.delete()
-                    except:
-                        pass
-
 async def main():
     await create_tables()
+    runtime_settings.apply_if_stale()
 
     # Запуск планировщика для проверки подписок
     scheduler.add_job(
@@ -2807,9 +2418,10 @@ async def main():
     print("Scheduler started - checking subscription expirations every 10 minutes")
     
     # Запуск бота
-    dp = Dispatcher()
+    dp = Dispatcher(storage=MemoryStorage())
     dp.pre_checkout_query.register(pre_checkout_handler)
     dp.message.register(success_payment_handler, F.successful_payment)
+    dp.include_router(admin_router)
     dp.include_router(router)
     
     # Передаём бота в payment_api для отправки уведомлений

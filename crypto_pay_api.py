@@ -8,6 +8,15 @@ CRYPTO_BOT_API_TOKEN = "656289:AAANjNg1vL6Vl4U7CdHbKiVfSfrquxUYQsf"
 CRYPTO_BOT_API_URL = "https://pay.crypt.bot/api"
 RUB_TO_USD_RATE = 70  # Курс: 70 рублей = 1 USD
 
+
+def _crypto_headers():
+    import runtime_settings
+    runtime_settings.apply_if_stale()
+    return {
+        "Crypto-Pay-API-Token": CRYPTO_BOT_API_TOKEN,
+        "Content-Type": "application/json",
+    }
+
 async def create_crypto_invoice(
     amount_rub: float,
     description: str,
@@ -27,10 +36,7 @@ async def create_crypto_invoice(
     import uuid
     invoice_id = f"vpn_{user_id}_{int(datetime.utcnow().timestamp())}_{uuid.uuid4().hex[:8]}"
     
-    headers = {
-        "Crypto-Pay-API-Token": CRYPTO_BOT_API_TOKEN,
-        "Content-Type": "application/json"
-    }
+    headers = _crypto_headers()
     
     # Параметры для создания инвойса
     # Документация: https://help.send.tg/en/articles/10279948-crypto-pay-api
@@ -90,10 +96,7 @@ async def create_crypto_invoice(
 async def get_crypto_invoice_status(invoice_id: int) -> Dict[str, Any]:
     """Получает статус инвойса"""
     
-    headers = {
-        "Crypto-Pay-API-Token": CRYPTO_BOT_API_TOKEN,
-        "Content-Type": "application/json"
-    }
+    headers = _crypto_headers()
     
     try:
         async with aiohttp.ClientSession() as session:

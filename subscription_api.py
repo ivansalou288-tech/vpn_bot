@@ -33,6 +33,8 @@ app = FastAPI(title="VPN Subscription API")
 # Middleware для логирования всех запросов
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
+    import runtime_settings
+    runtime_settings.apply_if_stale()
     print(f"[REQUEST] {request.method} {request.url.path} - Headers: {dict(request.headers)}")
     try:
         body = await request.body()
