@@ -224,7 +224,26 @@ def _apply(data):
             main_mod.TOKEN = bot_token
             bot = getattr(main_mod, "bot", None)
             if bot is not None:
-                bot.token = bot_token
+                _apply_live_bot_token(bot, bot_token)
+
+
+def _apply_live_bot_token(bot, token: str) -> None:
+    """Токен у Bot в aiogram 3.26 только для чтения. Пишем в закрытое поле и не роняем сохранение настроек."""
+    try:
+        if bot.token == token:
+            return
+    except Exception:
+        pass
+    for attr in ("_Bot__token", "_token"):
+        try:
+            setattr(bot, attr, token)
+        except Exception:
+            continue
+        try:
+            if bot.token == token:
+                return
+        except Exception:
+            continue
 
 
 def apply_if_stale():

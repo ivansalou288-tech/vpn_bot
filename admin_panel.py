@@ -218,7 +218,7 @@ def _tokens_view():
         lines.append(f"{_esc(label)}: <code>{_esc(settings.mask_token(settings.effective_token(key)))}</code>")
         rows.append([_btn(label, f"tok:{key}"), _btn("Сброс", f"tok_reset:{key}")])
     lines.append("")
-    lines.append("Пустое сохранённое значение возвращает токен из кода. Смена токена бота применяется к текущему процессу.")
+    lines.append("Пустое сохранённое значение возвращает токен из кода. Новый токен бота подхватывается после перезапуска процесса.")
     rows.append([_btn("Назад", "admin_panel")])
     return "\n".join(lines), _kb(rows)
 
@@ -1013,7 +1013,7 @@ async def admin_text(message: Message, state: FSMContext):
             await state.clear()
             extra = ""
             if key == "telegram_bot":
-                extra = "\nТекущий процесс уже берёт этот токен. Если бот замолчал, в bot_settings.json верните прежний и перезапустите."
+                extra = "\nПерезапустите бота, чтобы он начал ходить в Telegram с этим токеном."
             await _say(
                 message,
                 f"{_esc(settings.TOKEN_LABELS[key])}: <code>{_esc(settings.mask_token(token))}</code>{extra}",
