@@ -99,6 +99,8 @@ def _normalize_servers(servers):
                 "name": name,
                 "label": str(item.get("label") or name).strip() or name,
                 "panel_url": str(item.get("panel_url") or "").strip().rstrip("/"),
+                "panel_user": str(item.get("panel_user") or "").strip(),
+                "panel_password": str(item.get("panel_password") or "").strip(),
                 "webhook_url": str(item.get("webhook_url") or "").strip().rstrip("/"),
                 "is_primary": bool(item.get("is_primary")),
             }

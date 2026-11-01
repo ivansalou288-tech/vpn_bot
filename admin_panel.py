@@ -33,6 +33,12 @@ class AdminEdit(StatesGroup):
     server_label = State()
     server_panel = State()
     token_value = State()
+    provision_domain = State()
+    provision_host = State()
+    provision_user = State()
+    provision_password = State()
+    provision_country = State()
+    provision_confirm = State()
 
 
 _INPUT_STATES = (
@@ -54,6 +60,12 @@ _INPUT_STATES = (
     AdminEdit.server_label,
     AdminEdit.server_panel,
     AdminEdit.token_value,
+    AdminEdit.provision_domain,
+    AdminEdit.provision_host,
+    AdminEdit.provision_user,
+    AdminEdit.provision_password,
+    AdminEdit.provision_country,
+    AdminEdit.provision_confirm,
 )
 
 
@@ -185,6 +197,8 @@ def _servers_view(data):
     if not data["servers"]:
         lines.append("Список пуст.")
     lines.append("Основной — панель 3x-ui, на ней клиент создаётся первым. Остальные получают webhook.")
+    lines.append("«Поднять сервер» ставит машину с нуля: сертификат, 3x-ui как на доп. сервере, клиенты с основного.")
+    rows.append([_btn("Поднять сервер", "srv_provision")])
     rows.append([_btn("Добавить сервер", "srv_add")])
     rows.append([_btn("Назад", "admin_panel")])
     return "\n".join(lines), _kb(rows)
@@ -198,6 +212,8 @@ def _server_card(data, index: int):
         f"Роль: {role}\n"
         f"Имя: <code>{_esc(server['name'])}</code>\n"
         f"Панель: <code>{_esc(server.get('panel_url') or '—')}</code>\n"
+        f"Логин: <code>{_esc(server.get('panel_user') or '—')}</code>\n"
+        f"Пароль: <code>{_esc(server.get('panel_password') or '—')}</code>\n"
         f"Webhook: <code>{_esc(server.get('webhook_url') or '—')}</code>"
     )
     rows = [
@@ -472,6 +488,125 @@ async def srv_add(callback: CallbackQuery, state: FSMContext):
         callback,
         "<b>Новый сервер</b>\n\nШаг 1 из 3. Короткое имя латиницей, например <code>ezh-dev</code>",
         _back("admin_servers"),
+    )
+
+
+@router.callback_query(F.data == "srv_provision")
+async def srv_provision(callback: CallbackQuery, state: FSMContext):
+    await state.set_state(AdminEdit.provision_domain)
+    await state.update_data(provision={})
+    await _show(
+        callback,
+        "<b>Новый сервер</b>\n\n"
+        "Шаг 1 из 5. Домен, который уже смотрит A-записью на этот сервер.\n"
+        "Пример: <code>panel.example.ru</code>\n\n"
+        "Запись создаётся в reg.ru до запуска.",
+        _back("admin_servers"),
+    )
+
+
+@router.callback_query(F.data == "provision_go")
+async def provision_go(callback: CallbackQuery, state: FSMContext):
+    import asyncio
+
+    import provision_server
+
+    draft = dict((await state.get_data()).get("provision") or {})
+    await state.clear()
+    if not draft.get("domain") or not draft.get("host") or not draft.get("password"):
+        await _show(callback, "Шаги сбились. Откройте «Поднять сервер» ещё раз.", _back("admin_servers", "К серверам"))
+        return
+    await callback.answer()
+    status = await callback.message.answer("Начинаю установку. Обычно это 5–15 минут.")
+    loop = asyncio.get_running_loop()
+    queue = asyncio.Queue()
+
+    def progress(text):
+        loop.call_soon_threadsafe(queue.put_nowait, str(text))
+
+    task = asyncio.create_task(
+        asyncio.to_thread(
+            provision_server.provision,
+            draft["domain"],
+            draft["host"],
+            draft["user"],
+            draft["password"],
+            draft["country"],
+            progress,
+            False,
+        )
+    )
+    last = ""
+    while not task.done() or not queue.empty():
+        try:
+            line = await asyncio.wait_for(queue.get(), timeout=2)
+        except asyncio.TimeoutError:
+            continue
+        if line == last:
+            continue
+        last = line
+        try:
+            await status.edit_text(_esc(line[:3500]))
+        except Exception:
+            pass
+    try:
+        result = task.result()
+    except Exception as exc:
+        await callback.message.answer(
+            f"Сервер не поднялся.\n{_esc(exc)}\n\nЕсли установка оборвалась на середине, запустите её ещё раз с теми же данными.",
+            parse_mode="HTML",
+            reply_markup=_back("admin_servers", "К серверам"),
+        )
+        return
+
+    name = result["slug"]
+    taken = {item["name"] for item in settings.get()["servers"]}
+    index = 2
+    while name in taken:
+        name = f"{result['slug']}-{index}"
+        index += 1
+
+    def mutate(data):
+        data["servers"].append(
+            {
+                "name": name,
+                "label": f"{result['flag']} {result['country']}",
+                "panel_url": result["panel_url"],
+                "panel_user": result["panel_user"],
+                "panel_password": result["panel_password"],
+                "webhook_url": result["webhook_url"],
+                "is_primary": False,
+            }
+        )
+
+    settings.update(mutate)
+    panel_note = (
+        "<b>Данные панели</b>\n\n"
+        f"Сервер: {_esc(result['flag'])} {_esc(result['country'])}\n"
+        f"Адрес: <code>{_esc(result['panel_url'])}</code>\n"
+        f"Логин: <code>{_esc(result['panel_user'])}</code>\n"
+        f"Пароль: <code>{_esc(result['panel_password'])}</code>"
+    )
+    import main
+    try:
+        await main.bot.send_message(main.OPERATOR_CHAT_ID, panel_note, parse_mode="HTML")
+    except Exception as exc:
+        panel_note += f"\n\nНе отправилось отдельным сообщением: {_esc(exc)}"
+    warnings = "\n".join(f"• {_esc(item)}" for item in result.get("warnings") or [])
+    warning_block = f"\n\nЗамечания:\n{warnings}" if warnings else ""
+    await callback.message.answer(
+        "<b>Сервер запущен</b>\n\n"
+        f"Страна: {_esc(result['flag'])} {_esc(result['country'])}\n"
+        f"Домен: <code>{_esc(result['domain'])}</code>\n"
+        f"Панель: <code>{_esc(result['panel_url'])}</code>\n"
+        f"Логин: <code>{_esc(result['panel_user'])}</code>\n"
+        f"Пароль: <code>{_esc(result['panel_password'])}</code>\n"
+        f"Webhook: <code>{_esc(result['webhook_url'])}</code>\n"
+        f"Подключений: {result['inbounds']}\n"
+        f"Клиентов с основного: {result['clients_added']} из {result['clients_total']}"
+        f"{warning_block}",
+        parse_mode="HTML",
+        reply_markup=_back("admin_servers", "К серверам"),
     )
 
 
@@ -892,6 +1027,78 @@ async def admin_text(message: Message, state: FSMContext):
                 f"Домен: <code>{_esc(folder)}</code>\nФайл: <code>{_esc(settings.active_index_path(folder))}</code>",
                 _back("admin_index_html", "К index.html"),
             )
+            return
+
+        if current == AdminEdit.provision_domain.state:
+            domain = text.lower().rstrip(".")
+            if not re.fullmatch(r"[a-z0-9.-]{1,253}", domain) or "." not in domain:
+                raise ValueError("Нужен домен, например panel.example.ru")
+            await state.update_data(provision={"domain": domain})
+            await state.set_state(AdminEdit.provision_host)
+            await _say(message, "Шаг 2 из 5. IP сервера, например <code>203.0.113.10</code>", _back("admin_servers"))
+            return
+
+        if current == AdminEdit.provision_host.state:
+            if not re.fullmatch(r"\d{1,3}(?:\.\d{1,3}){3}", text):
+                raise ValueError("Нужен IPv4, четыре числа через точку")
+            draft = dict((await state.get_data()).get("provision") or {})
+            draft["host"] = text
+            await state.update_data(provision=draft)
+            await state.set_state(AdminEdit.provision_user)
+            await _say(message, "Шаг 3 из 5. Логин SSH, обычно <code>root</code>", _back("admin_servers"))
+            return
+
+        if current == AdminEdit.provision_user.state:
+            if not re.fullmatch(r"[A-Za-z0-9._-]{1,32}", text):
+                raise ValueError("Логин: латиница, цифры, точка, _ и -")
+            draft = dict((await state.get_data()).get("provision") or {})
+            draft["user"] = text
+            await state.update_data(provision=draft)
+            await state.set_state(AdminEdit.provision_password)
+            await _say(message, "Шаг 4 из 5. Пароль SSH одним сообщением.", _back("admin_servers"))
+            return
+
+        if current == AdminEdit.provision_password.state:
+            draft = dict((await state.get_data()).get("provision") or {})
+            draft["password"] = text
+            await state.update_data(provision=draft)
+            await state.set_state(AdminEdit.provision_country)
+            await _say(
+                message,
+                "Шаг 5 из 5. Страна для названий подключений.\nПример: <code>Нидерланды</code>",
+                _back("admin_servers"),
+            )
+            return
+
+        if current == AdminEdit.provision_country.state:
+            import provision_server
+
+            flag, country_name, slug = provision_server.resolve_country(text)
+            draft = dict((await state.get_data()).get("provision") or {})
+            draft["country"] = text
+            draft["flag"] = flag
+            draft["country_name"] = country_name
+            draft["slug"] = slug
+            await state.update_data(provision=draft)
+            await state.set_state(AdminEdit.provision_confirm)
+            await _say(
+                message,
+                "<b>Проверьте и запустите</b>\n\n"
+                f"Домен: <code>{_esc(draft.get('domain'))}</code>\n"
+                f"Сервер: <code>{_esc(draft.get('user'))}@{_esc(draft.get('host'))}</code>\n"
+                f"Страна: {_esc(flag)} {_esc(country_name)}\n\n"
+                "3x-ui повторит подключения дополнительного сервера, клиенты возьмутся с основного.",
+                _kb(
+                    [
+                        [_btn("Поднять", "provision_go")],
+                        [_btn("Отмена", "admin_servers", style="danger")],
+                    ]
+                ),
+            )
+            return
+
+        if current == AdminEdit.provision_confirm.state:
+            await _say(message, "Нажмите «Поднять» или «Отмена». Этот шаг текст не записывает.")
             return
 
         if current == AdminEdit.server_add_name.state:
