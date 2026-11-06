@@ -155,24 +155,43 @@ def _q(value) -> str:
 
 
 class Ssh:
-    def __init__(self, host, user, password):
+    def __init__(self, host, user, password, port=22, jump=None):
         self.host = host
         self.user = user
         self.password = password
+        self.port = int(port or 22)
+        self.jump = jump or None
         self._dir = tempfile.mkdtemp(prefix="vpn-ssh-")
         self._pass = os.path.join(self._dir, "pass")
+        self._jump_pass = os.path.join(self._dir, "jump")
         self._ask = os.path.join(self._dir, "askpass")
         with open(self._pass, "w", encoding="utf-8") as fh:
             fh.write(password)
         os.chmod(self._pass, 0o600)
+        jump_host = ""
+        if self.jump:
+            jump_host = str(self.jump.get("host") or "")
+            with open(self._jump_pass, "w", encoding="utf-8") as fh:
+                fh.write(str(self.jump.get("password") or ""))
+            os.chmod(self._jump_pass, 0o600)
         with open(self._ask, "w", encoding="utf-8") as fh:
-            fh.write("#!/bin/sh\ncat " + shlex.quote(self._pass) + "\n")
+            fh.write(
+                "#!/usr/bin/env python3\n"
+                "import sys\n"
+                f"prompt = ' '.join(sys.argv[1:])\n"
+                f"jump_host = {jump_host!r}\n"
+                f"path = {self._jump_pass!r} if jump_host and jump_host in prompt else {self._pass!r}\n"
+                "sys.stdout.write(open(path, encoding='utf-8').read())\n"
+            )
         os.chmod(self._ask, 0o700)
 
     def close(self):
+        for path in (self._pass, self._jump_pass, self._ask):
+            try:
+                os.remove(path)
+            except OSError:
+                pass
         try:
-            os.remove(self._pass)
-            os.remove(self._ask)
             os.rmdir(self._dir)
         except OSError:
             pass
@@ -185,16 +204,25 @@ class Ssh:
         env.pop("SSH_AUTH_SOCK", None)
         return env
 
-    def _base(self):
-        return [
-            "ssh",
+    def _opts(self, scp=False):
+        opts = [
+            "-4",
             "-o", "StrictHostKeyChecking=accept-new",
             "-o", "PreferredAuthentications=password",
             "-o", "PubkeyAuthentication=no",
             "-o", "NumberOfPasswordPrompts=1",
-            "-o", "ConnectTimeout=20",
-            f"{self.user}@{self.host}",
+            "-o", "ConnectTimeout=30",
         ]
+        if self.jump:
+            jump = self.jump
+            dest = f"{jump['user']}@{jump['host']}:{int(jump['port'])}"
+            opts += ["-J" if not scp else "-o", dest if not scp else f"ProxyJump={dest}"]
+        if self.port != 22:
+            opts += ["-P" if scp else "-p", str(self.port)]
+        return opts
+
+    def _base(self):
+        return ["ssh", *self._opts(), f"{self.user}@{self.host}"]
 
     def run(self, command, timeout=180, input_bytes=None):
         proc = subprocess.run(
@@ -215,15 +243,7 @@ class Ssh:
         return self.run("bash -s", timeout=timeout, input_bytes=script.encode())
 
     def push(self, local_path, remote_path):
-        cmd = [
-            "scp",
-            "-o", "StrictHostKeyChecking=accept-new",
-            "-o", "PreferredAuthentications=password",
-            "-o", "PubkeyAuthentication=no",
-            "-o", "NumberOfPasswordPrompts=1",
-            local_path,
-            f"{self.user}@{self.host}:{remote_path}",
-        ]
+        cmd = ["scp", *self._opts(scp=True), local_path, f"{self.user}@{self.host}:{remote_path}"]
         proc = subprocess.run(cmd, capture_output=True, timeout=180, env=self._env())
         if proc.returncode != 0:
             raise ProvisionError(proc.stderr.decode("utf-8", "replace")[-800:])
@@ -470,9 +490,16 @@ def _provision(domain, host, user, password, country, progress, register, holder
 
     _progress(progress, f"Проверяю DNS {domain} и вход на {host}")
     _domain_ok(domain, host)
-    target = Ssh(host, user, password)
+    jump = sources.get("jump") or None
+    target = Ssh(host, user, password, jump=jump)
     holders.append(target)
-    template = Ssh(sources["template"]["host"], sources["template"]["user"], sources["template"]["password"])
+    template_cfg = sources["template"]
+    template = Ssh(
+        template_cfg["host"],
+        template_cfg["user"],
+        template_cfg["password"],
+        port=template_cfg.get("port") or 48222,
+    )
     holders.append(template)
     try:
         probe = target.run("uname -m && test -d / || true", timeout=40)
@@ -492,7 +519,7 @@ def _provision(domain, host, user, password, country, progress, register, holder
 set -euo pipefail
 export DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a
 apt-get update -qq
-apt-get install -y -qq apache2 certbot python3-certbot-apache python3-venv python3 curl ca-certificates sqlite3 rsync fail2ban docker.io docker-compose-v2 || apt-get install -y -qq apache2 certbot python3-certbot-apache python3-venv python3 curl ca-certificates sqlite3 rsync fail2ban docker.io
+apt-get install -y -qq apache2 certbot python3-certbot-apache python3-venv python3 curl ca-certificates sqlite3 rsync fail2ban cron docker.io docker-compose-v2 || apt-get install -y -qq apache2 certbot python3-certbot-apache python3-venv python3 curl ca-certificates sqlite3 rsync fail2ban cron docker.io
 a2enmod ssl rewrite >/dev/null
 systemctl enable --now apache2
 """,
@@ -500,8 +527,8 @@ systemctl enable --now apache2
     )
 
     web_root = f"/var/www/{domain}"
-    cert = f"/etc/letsencrypt/live/{domain}/fullchain.pem"
-    key = f"/etc/letsencrypt/live/{domain}/privkey.pem"
+    cert_file = f"/etc/letsencrypt/live/{domain}/fullchain.pem"
+    key_file = f"/etc/letsencrypt/live/{domain}/privkey.pem"
     _progress(progress, f"Выпускаю сертификат для {domain}")
     target.bash(
         f"""
@@ -518,7 +545,7 @@ cat > /etc/apache2/sites-available/{domain}.conf << 'EOF'
 EOF
 a2ensite {domain}.conf >/dev/null
 systemctl reload apache2
-if [ ! -f {_q(cert)} ]; then
+if [ ! -f {_q(cert_file)} ]; then
   certbot certonly --webroot -w {_q(web_root)} -d {_q(domain)} --non-interactive --agree-tos --register-unsafely-without-email
 fi
 if [ ! -f /etc/letsencrypt/options-ssl-apache.conf ]; then
@@ -535,14 +562,16 @@ cat > /etc/apache2/sites-available/{domain}.conf << 'EOF'
     ServerName {domain}
     DocumentRoot {web_root}
     SSLEngine on
-    SSLCertificateFile {cert}
-    SSLCertificateKeyFile {key}
+    SSLCertificateFile {cert_file}
+    SSLCertificateKeyFile {key_file}
     Include /etc/letsencrypt/options-ssl-apache.conf
 </VirtualHost>
 </IfModule>
 EOF
 systemctl reload apache2
-(crontab -l 2>/dev/null | grep -v "certbot renew" || true; echo "17 4 * * * certbot renew --quiet --deploy-hook \\"systemctl reload apache2\\"") | crontab -
+if command -v crontab >/dev/null 2>&1; then
+  (crontab -l 2>/dev/null | grep -v "certbot renew" || true; echo "17 4 * * * certbot renew --quiet --deploy-hook \\"systemctl reload apache2\\"") | crontab -
+fi
 """,
         timeout=300,
     )
@@ -584,7 +613,7 @@ systemctl reload apache2
     ech_config, ech_keys = _generate_ech(target, domain)
     prepared = []
     for item in sample["inbounds"]:
-        stream = _rewrite_stream(json.loads(json.dumps(item["stream"])), domain, cert, key, ech_config, ech_keys)
+        stream = _rewrite_stream(json.loads(json.dumps(item["stream"])), domain, cert_file, key_file, ech_config, ech_keys)
         settings_obj = json.loads(json.dumps(item["settings"]))
         settings_obj["clients"] = []
         prepared.append({
@@ -604,16 +633,16 @@ systemctl reload apache2
         })
 
     copied_settings = {}
-    for key, value in (sample.get("settings") or {}).items():
-        if key in SETTING_SKIP:
+    for name, value in (sample.get("settings") or {}).items():
+        if name in SETTING_SKIP:
             continue
-        copied_settings[key] = value if isinstance(value, str) else json.dumps(value)
+        copied_settings[name] = value if isinstance(value, str) else json.dumps(value)
     copied_settings["tgBotEnable"] = "false"
     copied_settings["subEnable"] = copied_settings.get("subEnable") or "true"
     copied_settings["subPort"] = "2096"
     copied_settings["subPath"] = copied_settings.get("subPath") or "/sub/"
-    copied_settings["subCertFile"] = cert
-    copied_settings["subKeyFile"] = key
+    copied_settings["subCertFile"] = cert_file
+    copied_settings["subKeyFile"] = key_file
     copied_settings["subListen"] = ""
     copied_settings["subDomain"] = ""
 
@@ -633,7 +662,7 @@ if [ ! -f /etc/x-ui/x-ui.db ]; then
   systemctl stop x-ui
 fi
 systemctl stop x-ui || true
-/usr/local/x-ui/x-ui setting -username {_q(panel_user)} -password {_q(panel_password)} -port {web_port} -webBasePath {_q(web_path)} -webCert {_q(cert)} -webCertKey {_q(key)}
+/usr/local/x-ui/x-ui setting -username {_q(panel_user)} -password {_q(panel_password)} -port {web_port} -webBasePath {_q(web_path)} -webCert {_q(cert_file)} -webCertKey {_q(key_file)}
 """,
         timeout=180,
     )
@@ -806,7 +835,7 @@ def _deploy_project(ssh, project_dir, domain, web_port, web_path, api_token, pan
         "--exclude", "provision_sources.json",
         "--exclude", ".git",
         "-e",
-        "ssh -o StrictHostKeyChecking=accept-new -o PreferredAuthentications=password -o PubkeyAuthentication=no -o NumberOfPasswordPrompts=1",
+        " ".join(shlex.quote(part) for part in ["ssh", *ssh._opts()]),
         project_dir.rstrip("/") + "/",
         f"{ssh.user}@{ssh.host}:{remote_dir}/",
     ]
@@ -891,7 +920,12 @@ def _merge_subscription_urls(sources, template, target, new_url, warnings):
             warnings.append("Прокси подписки на основном сервере не перезапустился")
     for extra in sources.get("also_update_proxy") or []:
         try:
-            remote = Ssh(extra["host"], extra["user"], extra["password"])
+            remote = Ssh(
+                extra["host"],
+                extra["user"],
+                extra["password"],
+                port=extra.get("port") or 48222,
+            )
             try:
                 env_text = remote.run(f"cat {_q(extra.get('dir') or proxy_dir)}/.env", timeout=30)
                 remote_urls = _read_servers_line(env_text)
@@ -921,7 +955,7 @@ def _install_new_proxy(ssh, sources, urls, warnings):
         "rsync", "-az",
         "--exclude", ".git",
         "-e",
-        "ssh -o StrictHostKeyChecking=accept-new -o PreferredAuthentications=password -o PubkeyAuthentication=no -o NumberOfPasswordPrompts=1",
+        " ".join(shlex.quote(part) for part in ["ssh", *ssh._opts()]),
         source_dir.rstrip("/") + "/",
         f"{ssh.user}@{ssh.host}:{remote_dir}/",
     ]

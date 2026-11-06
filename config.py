@@ -28,19 +28,8 @@ SUBSCRIPTION_API_HTTP_PORT = 2501
 PANEL_SCHEME = "https"
 PANEL_BASE_URL = f"{PANEL_SCHEME}://{PANEL_DOMAIN}:{PANEL_PORT}/{PANEL_PATH}"
 
-# Удалённые серверы: на каждом должен быть webhook_client_api (POST /add_client, /dell_client)
-REMOTE_SERVERS = [
-    {
-        "name": "ezh-dev",
-        "label": "www.ezh-dev.ru",
-        "base_url": "https://www.ezh-dev.ru:2500",
-    },
-    {
-        "name": "ezhvpn",
-        "label": "panel.ezhvpn.ru",
-        "base_url": "https://panel.ezhvpn.ru:2500",
-    },
-]
+# Дополнительные серверы задаются в админке (бот ходит в их панели 3x-ui по логину и паролю).
+REMOTE_SERVERS = []
 
 # Public base URL used in user-facing links (subscriptions, landing pages, etc.)
 PUBLIC_DOMAIN = "panel.ezhqpy.ru"

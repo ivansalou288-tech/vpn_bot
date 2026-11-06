@@ -32,6 +32,15 @@ def add_client_to_all_inbounds(
 
     success=True если создалось на основном. Ошибка удалённых не ломает ответ клиенту.
     """
+    if not sub_id:
+        # У пользователя уже есть клиент — переиспользуем его subId, чтобы не плодить дубли
+        try:
+            existing = getSubById(tg_id)
+            if existing.get("success") and existing.get("subId"):
+                sub_id = existing["subId"]
+                print(f"[API] Existing subId found for tg_id={tg_id}: {sub_id}")
+        except Exception as e:
+            print(f"[API] getSubById failed: {e}")
     if sub_id:
         universal_sub_id = sub_id
         parts = sub_id.rsplit("_", 1)

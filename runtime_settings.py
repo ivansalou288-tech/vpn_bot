@@ -52,24 +52,18 @@ def get_defaults():
             "name": "main",
             "label": config.PANEL_DOMAIN,
             "panel_url": panel_url,
-            "webhook_url": "",
+            "panel_user": "",
+            "panel_password": "",
+            "sub_url": "",
+            "enabled": True,
             "is_primary": True,
         }
     ]
-    for item in list(config.REMOTE_SERVERS or []):
-        servers.append(
-            {
-                "name": item.get("name") or item.get("label") or "server",
-                "label": item.get("label") or item.get("name") or "server",
-                "panel_url": "",
-                "webhook_url": str(item.get("base_url") or "").rstrip("/"),
-                "is_primary": False,
-            }
-        )
     _DEFAULTS = {
         "subscription_base": "https://panel.ezhqpy.ru:4567/sub",
         "web_domain": config.PUBLIC_DOMAIN or config.PANEL_DOMAIN,
         "servers": servers,
+        "proxy_dir": "",
         "tokens": {key: "" for key in TOKEN_KEYS},
     }
     return copy.deepcopy(_DEFAULTS)
@@ -101,7 +95,8 @@ def _normalize_servers(servers):
                 "panel_url": str(item.get("panel_url") or "").strip().rstrip("/"),
                 "panel_user": str(item.get("panel_user") or "").strip(),
                 "panel_password": str(item.get("panel_password") or "").strip(),
-                "webhook_url": str(item.get("webhook_url") or "").strip().rstrip("/"),
+                "sub_url": str(item.get("sub_url") or "").strip(),
+                "enabled": bool(item.get("enabled", True)),
                 "is_primary": bool(item.get("is_primary")),
             }
         )
@@ -121,6 +116,9 @@ def _normalize_servers(servers):
                 break
         if not primary_seen:
             clean[0]["is_primary"] = True
+    for item in clean:
+        if item["is_primary"]:
+            item["enabled"] = True
     return clean
 
 
@@ -135,7 +133,13 @@ def _merge(saved):
     if domain:
         data["web_domain"] = domain
     if isinstance(saved.get("servers"), list) and saved["servers"]:
-        data["servers"] = _normalize_servers(saved["servers"])
+        servers = _normalize_servers(saved["servers"])
+        if not saved.get("servers_reset_done"):
+            # Разовая чистка: раньше сюда попадали webhook-серверы, теперь остаётся только главный.
+            servers = [item for item in servers if item["is_primary"]]
+        if servers:
+            data["servers"] = servers
+    data["proxy_dir"] = str(saved.get("proxy_dir") or "").strip()
     tokens = saved.get("tokens") if isinstance(saved.get("tokens"), dict) else {}
     for key in TOKEN_KEYS:
         value = str(tokens.get(key) or "").strip()
@@ -166,20 +170,14 @@ def _apply(data):
             config.PANEL_PATH = parsed["path"]
             config.PANEL_BASE_URL = parsed["base"]
 
+    # Дополнительные серверы: бот ходит в их панели 3x-ui напрямую (логин/пароль), без webhook.
     remotes = []
     for item in servers:
-        if item.get("is_primary"):
+        if item.get("is_primary") or not item.get("enabled", True):
             continue
-        url = item.get("webhook_url") or ""
-        if not url:
+        if not item.get("panel_url"):
             continue
-        remotes.append(
-            {
-                "name": item["name"],
-                "label": item.get("label") or item["name"],
-                "base_url": url,
-            }
-        )
+        remotes.append(dict(item))
     config.REMOTE_SERVERS.clear()
     config.REMOTE_SERVERS.extend(remotes)
 
@@ -190,6 +188,8 @@ def _apply(data):
         if api_mod.REMOTE_SERVERS is not config.REMOTE_SERVERS:
             api_mod.REMOTE_SERVERS.clear()
             api_mod.REMOTE_SERVERS.extend(remotes)
+        if primary:
+            api_mod.MAIN_SERVER = dict(primary)
         panel_token = data["tokens"].get("panel_api") or _ORIGINALS.get("panel_api") or ""
         if panel_token:
             api_mod.api_token = panel_token
@@ -270,6 +270,8 @@ def save(data):
     data["servers"] = _normalize_servers(data.get("servers") or [])
     data["subscription_base"] = str(data.get("subscription_base") or "").rstrip("/")
     data["web_domain"] = str(data.get("web_domain") or "").strip()
+    data["proxy_dir"] = str(data.get("proxy_dir") or "").strip()
+    data["servers_reset_done"] = True
     tokens = data.get("tokens") if isinstance(data.get("tokens"), dict) else {}
     data["tokens"] = {key: str(tokens.get(key) or "").strip() for key in TOKEN_KEYS}
     with _LOCK:

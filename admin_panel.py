@@ -4,7 +4,7 @@ import html
 import re
 
 from aiogram import F, Router
-from aiogram.filters import Filter, StateFilter
+from aiogram.filters import Command, Filter, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
@@ -27,9 +27,12 @@ class AdminEdit(StatesGroup):
     index_link = State()
     index_domain = State()
     server_add_name = State()
-    server_add_label = State()
     server_add_url = State()
-    server_webhook = State()
+    server_add_user = State()
+    server_add_pass = State()
+    server_creds = State()
+    server_sub = State()
+    proxy_add = State()
     server_label = State()
     server_panel = State()
     token_value = State()
@@ -54,9 +57,12 @@ _INPUT_STATES = (
     AdminEdit.index_link,
     AdminEdit.index_domain,
     AdminEdit.server_add_name,
-    AdminEdit.server_add_label,
     AdminEdit.server_add_url,
-    AdminEdit.server_webhook,
+    AdminEdit.server_add_user,
+    AdminEdit.server_add_pass,
+    AdminEdit.server_creds,
+    AdminEdit.server_sub,
+    AdminEdit.proxy_add,
     AdminEdit.server_label,
     AdminEdit.server_panel,
     AdminEdit.token_value,
@@ -112,7 +118,7 @@ admin_keyboard = _kb(
         [_btn("Контакты", "admin_contacts"), _btn("Клиент", "admin_add_client")],
         [_btn("Рассылка", "admin_broadcast"), _btn("CantFree", "admin_remove_cantfree")],
         [_btn("Ссылка подписки", "admin_sub_link")],
-        [_btn("Серверы", "admin_servers")],
+        [_btn("Серверы", "admin_servers"), _btn("Прокси подписок", "admin_proxy")],
         [_btn("Токены", "admin_tokens")],
         [_btn("index.html на сайте", "admin_index_html")],
         [_btn("Merch", "admin_merch")],
@@ -185,46 +191,72 @@ def _servers_view(data):
     rows = []
     for index, server in enumerate(data["servers"]):
         mark = "★ " if server.get("is_primary") else ""
-        role = "основной" if server.get("is_primary") else "дополнительный"
-        panel = server.get("panel_url") or "—"
-        hook = server.get("webhook_url") or "—"
-        lines.append(f"{mark}<b>{_esc(server.get('label') or server['name'])}</b> ({role})")
-        lines.append(f"имя: <code>{_esc(server['name'])}</code>")
-        lines.append(f"панель: <code>{_esc(panel)}</code>")
-        lines.append(f"webhook: <code>{_esc(hook)}</code>")
+        role = "главный" if server.get("is_primary") else "дополнительный"
+        state = "включён" if server.get("enabled", True) else "выключен"
+        icon = "🟢" if server.get("enabled", True) else "⚪"
+        lines.append(f"{icon} {mark}<b>{_esc(server.get('label') or server['name'])}</b> ({role}, {state})")
+        lines.append(f"панель: <code>{_esc(server.get('panel_url') or '—')}</code>")
         lines.append("")
-        rows.append([_btn(f"{mark}{server.get('label') or server['name']}"[:40], f"srv:{index}")])
-    if not data["servers"]:
-        lines.append("Список пуст.")
-    lines.append("Основной — панель 3x-ui, на ней клиент создаётся первым. Остальные получают webhook.")
-    lines.append("«Поднять сервер» ставит машину с нуля: сертификат, 3x-ui как на доп. сервере, клиенты с основного.")
-    rows.append([_btn("Поднять сервер", "srv_provision")])
+        rows.append([_btn(f"{icon} {mark}{server.get('label') or server['name']}"[:40], f"srv:{index}")])
+    lines.append("Бот работает только на главном сервере. Подписка создаётся через API панели 3x-ui "
+                 "на каждом включённом сервере, на всех его подключениях.")
     rows.append([_btn("Добавить сервер", "srv_add")])
+    rows.append([_btn("Прокси подписок", "admin_proxy")])
     rows.append([_btn("Назад", "admin_panel")])
     return "\n".join(lines), _kb(rows)
 
 
 def _server_card(data, index: int):
     server = data["servers"][index]
-    role = "основной" if server.get("is_primary") else "дополнительный"
+    role = "главный" if server.get("is_primary") else "дополнительный"
+    password = "задан" if server.get("panel_password") else "—"
+    if server.get("is_primary") and not server.get("panel_password"):
+        password = "не нужен (API-токен)"
     text = (
         f"<b>{_esc(server.get('label') or server['name'])}</b>\n\n"
         f"Роль: {role}\n"
+        f"Статус: {'включён' if server.get('enabled', True) else 'выключен'}\n"
         f"Имя: <code>{_esc(server['name'])}</code>\n"
         f"Панель: <code>{_esc(server.get('panel_url') or '—')}</code>\n"
         f"Логин: <code>{_esc(server.get('panel_user') or '—')}</code>\n"
-        f"Пароль: <code>{_esc(server.get('panel_password') or '—')}</code>\n"
-        f"Webhook: <code>{_esc(server.get('webhook_url') or '—')}</code>"
+        f"Пароль: {password}\n"
+        f"Подписка в прокси: <code>{_esc(server.get('sub_url') or '—')}</code>"
     )
     rows = [
-        [_btn("Webhook", f"srv_wh:{index}"), _btn("Название", f"srv_lb:{index}")],
-        [_btn("URL панели", f"srv_pn:{index}")],
+        [_btn("Проверить доступ", f"srv_chk:{index}"), _btn("Название", f"srv_lb:{index}")],
+        [_btn("Ссылка панели", f"srv_pn:{index}"), _btn("Логин и пароль", f"srv_cr:{index}")],
+        [_btn("Ссылка подписки", f"srv_sb:{index}")],
     ]
     if not server.get("is_primary"):
-        rows.append([_btn("Сделать основным", f"srv_pr:{index}")])
+        toggle = "Выключить" if server.get("enabled", True) else "Включить"
+        rows.append([_btn(toggle, f"srv_tg:{index}")])
+        rows.append([_btn("Переименовать подключения", f"srv_rn:{index}")])
+        rows.append([_btn("Скопировать клиентов с главного", f"srv_sync:{index}")])
         rows.append([_btn("Удалить", f"srv_rm:{index}", style="danger")])
     rows.append([_btn("К списку", "admin_servers")])
     return text, _kb(rows)
+
+
+def _proxy_view():
+    import sub_proxy
+
+    urls, err = sub_proxy.list_urls()
+    lines = ["<b>Прокси сбора подписок</b>", "", f"Папка: <code>{_esc(sub_proxy.proxy_dir())}</code>", ""]
+    rows = []
+    if err:
+        lines.append(_esc(err))
+    elif not urls:
+        lines.append("Список пуст.")
+    for index, url in enumerate(urls):
+        tag = " (главный)" if sub_proxy.is_main_url(url) else ""
+        lines.append(f"{index + 1}. <code>{_esc(url)}</code>{tag}")
+        rows.append([_btn(f"Убрать {index + 1}", f"px_rm:{index}", style="danger")])
+    lines.append("")
+    lines.append("Пользователь получает подписку, собранную из всех этих ссылок.")
+    rows.append([_btn("Добавить ссылку", "px_add")])
+    rows.append([_btn("Оставить только главный", "px_main")])
+    rows.append([_btn("Назад", "admin_servers")])
+    return "\n".join(lines), _kb(rows)
 
 
 def _tokens_view():
@@ -486,7 +518,7 @@ async def srv_add(callback: CallbackQuery, state: FSMContext):
     await state.update_data(draft={})
     await _show(
         callback,
-        "<b>Новый сервер</b>\n\nШаг 1 из 3. Короткое имя латиницей, например <code>ezh-dev</code>",
+        "<b>Новый сервер</b>\n\nШаг 1 из 4. Название сервера, например <code>Нидерланды</code> или <code>ezh-dev</code>",
         _back("admin_servers"),
     )
 
@@ -623,18 +655,6 @@ async def srv_open(callback: CallbackQuery, state: FSMContext):
     await _show(callback, text, markup)
 
 
-@router.callback_query(_cb(r"^srv_wh:\d+$"))
-async def srv_webhook(callback: CallbackQuery, state: FSMContext):
-    index = int(callback.data.split(":")[1])
-    await state.set_state(AdminEdit.server_webhook)
-    await state.update_data(server_index=index)
-    await _show(
-        callback,
-        "<b>Webhook сервера</b>\n\nПришлите адрес, например <code>https://panel.example.ru:2500</code>",
-        _back(f"srv:{index}"),
-    )
-
-
 @router.callback_query(_cb(r"^srv_lb:\d+$"))
 async def srv_label(callback: CallbackQuery, state: FSMContext):
     index = int(callback.data.split(":")[1])
@@ -655,44 +675,169 @@ async def srv_panel(callback: CallbackQuery, state: FSMContext):
     )
 
 
-@router.callback_query(_cb(r"^srv_pr:\d+$"))
-async def srv_primary(callback: CallbackQuery, state: FSMContext):
+def _server_index(callback, data):
     index = int(callback.data.split(":")[1])
-    data = settings.get()
     if index < 0 or index >= len(data["servers"]):
-        await _show(callback, "Сервер уже не в списке.", _back("admin_servers", "К серверам"))
+        return None
+    return index
+
+
+@router.callback_query(_cb(r"^srv_cr:\d+$"))
+async def srv_creds(callback: CallbackQuery, state: FSMContext):
+    index = int(callback.data.split(":")[1])
+    await state.set_state(AdminEdit.server_creds)
+    await state.update_data(server_index=index)
+    await _show(
+        callback,
+        "<b>Логин и пароль панели</b>\n\nПришлите двумя строками:\n<code>логин\nпароль</code>",
+        _back(f"srv:{index}"),
+    )
+
+
+@router.callback_query(_cb(r"^srv_sb:\d+$"))
+async def srv_sub(callback: CallbackQuery, state: FSMContext):
+    index = int(callback.data.split(":")[1])
+    await state.set_state(AdminEdit.server_sub)
+    await state.update_data(server_index=index)
+    await _show(
+        callback,
+        "<b>Ссылка подписки сервера</b>\n\nТа, что стоит в прокси подписок. Пример: <code>https://домен:2096/sub/</code>",
+        _back(f"srv:{index}"),
+    )
+
+
+@router.callback_query(_cb(r"^srv_chk:\d+$"))
+async def srv_check(callback: CallbackQuery, state: FSMContext):
+    import asyncio
+
+    import api
+
+    await state.clear()
+    data = settings.get()
+    index = _server_index(callback, data)
+    if index is None:
+        await _show(callback, "Сервера уже нет в списке.", _back("admin_servers", "К серверам"))
         return
     server = data["servers"][index]
-    if not server.get("panel_url"):
-        await state.set_state(AdminEdit.server_panel)
-        await state.update_data(server_index=index, promote=True)
-        await _show(
-            callback,
-            "<b>Этот сервер станет основным</b>\n\nСначала пришлите URL его панели 3x-ui:\n<code>https://домен:порт/путь</code>",
-            _back("admin_servers"),
-        )
+    await callback.answer("Проверяю")
+    if server.get("is_primary") and not server.get("panel_password"):
+        def probe():
+            with api.use_server(None):
+                result = api.get_clients()
+            return bool(result.get("success")), None if result.get("success") else str(result.get("error") or result)[:300]
+        ok, err = await asyncio.to_thread(probe)
+    else:
+        ok, err = await asyncio.to_thread(api.server_login_check, server)
+    note = "✅ Панель отвечает, вход выполнен." if ok else f"❌ Нет доступа: {_esc(err)}"
+    text, markup = _server_card(settings.get(), index)
+    await _show(callback, f"{note}\n\n{text}", markup)
+
+
+@router.callback_query(_cb(r"^srv_tg:\d+$"))
+async def srv_toggle(callback: CallbackQuery, state: FSMContext):
+    await state.clear()
+    index = int(callback.data.split(":")[1])
+
+    def mutate(data):
+        server = _server_or_none(data, index)
+        if server is not None and not server.get("is_primary"):
+            server["enabled"] = not server.get("enabled", True)
+
+    settings.update(mutate)
+    text, markup = _server_card(settings.get(), index)
+    await _show(callback, text, markup)
+
+
+@router.callback_query(_cb(r"^srv_sync:\d+$"))
+async def srv_sync(callback: CallbackQuery, state: FSMContext):
+    import asyncio
+
+    import api
+
+    await state.clear()
+    data = settings.get()
+    index = _server_index(callback, data)
+    if index is None or data["servers"][index].get("is_primary"):
+        await _show(callback, "Сервер не найден.", _back("admin_servers", "К серверам"))
         return
-    _mark_primary(data, index)
-    settings.save(data)
-    warning = ""
-    old_without_hook = [
-        item["label"]
-        for item in data["servers"]
-        if not item.get("is_primary") and not item.get("webhook_url") and item.get("panel_url")
-    ]
-    if old_without_hook:
-        warning = (
-            "\n\nУ сервера без webhook клиенты больше не создаются: "
-            + ", ".join(_esc(name) for name in old_without_hook)
-            + ". Укажите ему webhook, если он должен остаться в списке."
-        )
-    text, markup = _servers_view(settings.get())
-    await _show(callback, f"Основной сервер: <b>{_esc(server.get('label') or server['name'])}</b>{warning}\n\n{text}", markup)
+    server = data["servers"][index]
+    await callback.answer("Копирую, это может занять несколько минут")
+    result = await asyncio.to_thread(api.sync_clients_to_server, server)
+    note = f"Скопировано клиентов: {result['added']} из {result['total']} (уже были на сервере: {result.get('skipped', 0)})."
+    if result.get("error"):
+        note += f"\nПервая ошибка: {_esc(result['error'])}"
+    text, markup = _server_card(settings.get(), index)
+    await _show(callback, f"{note}\n\n{text}", markup)
 
 
-def _mark_primary(data, index: int):
-    for pos, item in enumerate(data["servers"]):
-        item["is_primary"] = pos == index
+@router.callback_query(_cb(r"^srv_rn:\d+$"))
+async def srv_rename(callback: CallbackQuery, state: FSMContext):
+    import asyncio
+
+    import api
+
+    await state.clear()
+    data = settings.get()
+    index = _server_index(callback, data)
+    if index is None or data["servers"][index].get("is_primary"):
+        await _show(callback, "Сервер не найден.", _back("admin_servers", "К серверам"))
+        return
+    await callback.answer("Переименовываю")
+    result = await asyncio.to_thread(api.rename_server_inbounds, data["servers"][index])
+    note = f"Переименовано подключений: {len(result['changed'])}."
+    if result["errors"]:
+        note += "\nОшибки: " + "; ".join(_esc(e) for e in result["errors"][:3])
+    text, markup = _server_card(settings.get(), index)
+    await _show(callback, f"{note}\n\n{text}", markup)
+
+
+@router.callback_query(F.data == "admin_proxy")
+async def admin_proxy(callback: CallbackQuery, state: FSMContext):
+    await state.clear()
+    text, markup = _proxy_view()
+    await _show(callback, text, markup)
+
+
+@router.callback_query(F.data == "px_add")
+async def px_add(callback: CallbackQuery, state: FSMContext):
+    await state.set_state(AdminEdit.proxy_add)
+    await _show(
+        callback,
+        "<b>Добавить ссылку в прокси</b>\n\nПришлите адрес подписки сервера, например <code>https://домен:2096/sub/</code>",
+        _back("admin_proxy"),
+    )
+
+
+@router.callback_query(_cb(r"^px_rm:\d+$"))
+async def px_remove(callback: CallbackQuery, state: FSMContext):
+    import asyncio
+
+    import sub_proxy
+
+    await state.clear()
+    index = int(callback.data.split(":")[1])
+    urls, err = sub_proxy.list_urls()
+    if err or index >= len(urls):
+        text, markup = _proxy_view()
+        await _show(callback, _esc(err or "Ссылки уже нет."), markup)
+        return
+    await callback.answer("Применяю")
+    ok, msg = await asyncio.to_thread(sub_proxy.remove_url, urls[index])
+    text, markup = _proxy_view()
+    await _show(callback, f"{'✅' if ok else '❌'} {_esc(msg)}\n\n{text}", markup)
+
+
+@router.callback_query(F.data == "px_main")
+async def px_main(callback: CallbackQuery, state: FSMContext):
+    import asyncio
+
+    import sub_proxy
+
+    await state.clear()
+    await callback.answer("Применяю")
+    ok, msg = await asyncio.to_thread(sub_proxy.keep_only_main)
+    text, markup = _proxy_view()
+    await _show(callback, f"{'✅' if ok else '❌'} {_esc(msg)}\n\n{text}", markup)
 
 
 @router.callback_query(_cb(r"^srv_rm:\d+$"))
@@ -725,13 +870,24 @@ async def srv_remove_ok(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     index = int(callback.data.split(":")[1])
 
+    import asyncio
+
+    import sub_proxy
+
+    removed_sub = []
+
     def mutate(data):
         if 0 <= index < len(data["servers"]) and not data["servers"][index].get("is_primary"):
+            removed_sub.append(data["servers"][index].get("sub_url") or "")
             del data["servers"][index]
 
     settings.update(mutate)
+    note = ""
+    if removed_sub and removed_sub[0]:
+        ok, msg = await asyncio.to_thread(sub_proxy.remove_url, removed_sub[0])
+        note = f"Прокси подписок: {_esc(msg)}\n\n"
     text, markup = _servers_view(settings.get())
-    await _show(callback, text, markup)
+    await _show(callback, note + text, markup)
 
 
 @router.callback_query(F.data == "admin_tokens")
@@ -1102,66 +1258,153 @@ async def admin_text(message: Message, state: FSMContext):
             return
 
         if current == AdminEdit.server_add_name.state:
-            name = settings.clean_server_name(text)
-            data = settings.get()
-            if any(item["name"] == name for item in data["servers"]):
-                raise ValueError("Такое имя уже есть. Пришлите другое.")
-            await state.update_data(draft={"name": name})
-            await state.set_state(AdminEdit.server_add_label)
-            await _say(message, "Шаг 2 из 3. Подпись сервера, например <code>www.ezh-dev.ru</code>", _back("admin_servers"))
-            return
-
-        if current == AdminEdit.server_add_label.state:
             if not text or len(text) > 64:
-                raise ValueError("Подпись: от 1 до 64 символов")
-            draft = dict((await state.get_data()).get("draft") or {})
-            draft["label"] = text
-            await state.update_data(draft=draft)
+                raise ValueError("Название: от 1 до 64 символов")
+            await state.update_data(draft={"label": text})
             await state.set_state(AdminEdit.server_add_url)
             await _say(
                 message,
-                "Шаг 3 из 3. Webhook, например <code>https://www.ezh-dev.ru:2500</code>",
+                "Шаг 2 из 4. Ссылка на панель 3x-ui целиком, с секретным путём.\n"
+                "Пример: <code>https://panel.example.ru:2053/секретный_путь</code>",
                 _back("admin_servers"),
             )
             return
 
         if current == AdminEdit.server_add_url.state:
-            url = settings.clean_webhook_url(text)
+            parsed = settings.parse_panel_url(text)
+            if any(item.get("panel_url") == parsed["base"] for item in settings.get()["servers"]):
+                raise ValueError("Такая панель уже добавлена")
             draft = dict((await state.get_data()).get("draft") or {})
-            if not draft.get("name"):
+            draft["panel_url"] = parsed["base"]
+            await state.update_data(draft=draft)
+            await state.set_state(AdminEdit.server_add_user)
+            await _say(message, "Шаг 3 из 4. Логин панели.", _back("admin_servers"))
+            return
+
+        if current == AdminEdit.server_add_user.state:
+            if not text or any(ch.isspace() for ch in text):
+                raise ValueError("Логин одной строкой, без пробелов")
+            draft = dict((await state.get_data()).get("draft") or {})
+            draft["panel_user"] = text
+            await state.update_data(draft=draft)
+            await state.set_state(AdminEdit.server_add_pass)
+            await _say(message, "Шаг 4 из 4. Пароль панели. Сообщение с ним я удалю.", _back("admin_servers"))
+            return
+
+        if current == AdminEdit.server_add_pass.state:
+            import asyncio
+
+            import api
+            import sub_proxy
+
+            draft = dict((await state.get_data()).get("draft") or {})
+            try:
+                await message.delete()
+            except Exception:
+                pass
+            if not draft.get("panel_url"):
                 await state.clear()
                 await _say(message, "Шаги сбились. Откройте «Добавить сервер» ещё раз.", _back("admin_servers", "К серверам"))
                 return
+            server = {
+                "name": "",
+                "label": draft["label"],
+                "panel_url": draft["panel_url"],
+                "panel_user": draft["panel_user"],
+                "panel_password": text,
+                "sub_url": "",
+                "enabled": True,
+                "is_primary": False,
+            }
+            ok, err = await asyncio.to_thread(api.server_login_check, server)
+            if not ok:
+                await _say(
+                    message,
+                    f"Не удалось войти в панель: {_esc(err)}\nМожно прислать пароль ещё раз или нажать «Отмена».",
+                    _back("admin_servers"),
+                )
+                return
+            sub_url, sub_err = await asyncio.to_thread(sub_proxy.detect_sub_url, server)
+            server["sub_url"] = sub_url or ""
+            taken = {item["name"] for item in settings.get()["servers"]}
+            base_name = re.sub(r"[^A-Za-z0-9_-]+", "-", draft["label"]).strip("-")[:24] or "server"
+            name, number = base_name, 2
+            while name in taken:
+                name = f"{base_name}-{number}"
+                number += 1
+            server["name"] = name
 
             def mutate(data):
-                data["servers"].append(
-                    {
-                        "name": draft["name"],
-                        "label": draft.get("label") or draft["name"],
-                        "panel_url": "",
-                        "webhook_url": url,
-                        "is_primary": False,
-                    }
-                )
+                data["servers"].append(server)
 
             settings.update(mutate)
-            await _finish_servers(message, state, f"Сервер <b>{_esc(draft['name'])}</b> добавлен.")
+            notes = ["Вход в панель выполнен."]
+            if sub_url:
+                px_ok, px_msg = await asyncio.to_thread(sub_proxy.add_url, sub_url)
+                notes.append(f"Прокси подписок: {'добавлена' if px_ok else 'не добавлена'} <code>{_esc(sub_url)}</code>"
+                             + ("" if px_ok else f" ({_esc(px_msg)})"))
+            else:
+                notes.append(f"Ссылку подписки определить не удалось ({_esc(sub_err)}). Задайте её в карточке сервера.")
+            renamed = await asyncio.to_thread(api.rename_server_inbounds, server)
+            notes.append(f"Подключения переименованы: {len(renamed['changed'])}"
+                         + (f" (ошибка: {_esc(renamed['errors'][0])})" if renamed["errors"] else ""))
+            await message.answer("Переношу клиентов с главного сервера, это может занять несколько минут…")
+            sync = await asyncio.to_thread(api.sync_clients_to_server, server)
+            line = f"Клиенты с главного: перенесено {sync['added']} из {sync['total']}"
+            if sync.get("skipped"):
+                line += f" (уже были: {sync['skipped']})"
+            if sync.get("error"):
+                line += f"\nОшибка: {_esc(sync['error'])}. Повторить можно кнопкой «Скопировать клиентов с главного» в карточке сервера."
+            notes.append(line)
+            await _finish_servers(message, state, f"Сервер <b>{_esc(draft['label'])}</b> добавлен.\n" + "\n".join(notes))
             return
 
         data_state = await state.get_data()
         index = data_state.get("server_index")
 
-        if current == AdminEdit.server_webhook.state:
-            url = settings.clean_webhook_url(text)
+        if current == AdminEdit.proxy_add.state:
+            import asyncio
+
+            import sub_proxy
+
+            ok, msg = await asyncio.to_thread(sub_proxy.add_url, text)
+            await state.clear()
+            view, markup = _proxy_view()
+            await _say(message, f"{'✅' if ok else '❌'} {_esc(msg)}\n\n{view}", markup)
+            return
+
+        if current == AdminEdit.server_sub.state:
+            import sub_proxy
+
+            url = sub_proxy.normalize_url(text)
 
             def mutate(data):
                 server = _server_or_none(data, index)
                 if server is None:
                     raise ValueError("Сервер уже удалён")
-                server["webhook_url"] = url
+                server["sub_url"] = url
 
             settings.update(mutate)
-            await _finish_servers(message, state, "Webhook сохранён.")
+            await _finish_servers(message, state, "Ссылка подписки сохранена. В прокси её можно добавить в разделе «Прокси подписок».")
+            return
+
+        if current == AdminEdit.server_creds.state:
+            lines = [part.strip() for part in text.splitlines() if part.strip()]
+            if len(lines) != 2:
+                raise ValueError("Нужны две строки: логин и пароль")
+            try:
+                await message.delete()
+            except Exception:
+                pass
+
+            def mutate(data):
+                server = _server_or_none(data, index)
+                if server is None:
+                    raise ValueError("Сервер уже удалён")
+                server["panel_user"], server["panel_password"] = lines
+
+            settings.update(mutate)
+            await _finish_servers(message, state, "Логин и пароль сохранены.")
             return
 
         if current == AdminEdit.server_label.state:
@@ -1193,15 +1436,6 @@ async def admin_text(message: Message, state: FSMContext):
 
             settings.update(mutate)
             note = "URL панели сохранён."
-            if promote:
-                note = "Сервер назначен основным."
-                leftover = [
-                    item.get("label") or item["name"]
-                    for item in settings.get()["servers"]
-                    if not item.get("is_primary") and item.get("panel_url") and not item.get("webhook_url")
-                ]
-                if leftover:
-                    note += " Без webhook клиенты не создаются на: " + ", ".join(_esc(name) for name in leftover)
             await _finish_servers(message, state, note)
             return
 
@@ -1239,3 +1473,99 @@ async def admin_text(message: Message, state: FSMContext):
 @router.message(StateFilter(*_INPUT_STATES), ~F.text)
 async def admin_need_text(message: Message):
     await message.answer("Нужен обычный текст одним сообщением. Кнопка «Отмена» закрывает ввод.")
+
+
+@router.message(Command("check"))
+async def admin_check_client(message: Message):
+    parts = (message.text or "").split()
+    if len(parts) != 2 or not parts[1].lstrip("-").isdigit():
+        await message.answer("Использование: /check &lt;telegram_id&gt;", parse_mode="HTML")
+        return
+    tg_id = int(parts[1])
+    status = await message.answer("⏳ Собираю данные…")
+    import asyncio
+    import check_client
+
+    try:
+        blocks = await asyncio.to_thread(check_client.build_report, tg_id)
+    except Exception as e:
+        await status.edit_text(f"Ошибка: {html.escape(str(e))}", parse_mode="HTML")
+        return
+    await status.delete()
+    for b in blocks:
+        for i in range(0, len(b), 4000):
+            await message.answer(b[i:i + 4000], parse_mode="HTML")
+
+
+@router.message(Command("delsub"))
+async def admin_delsub(message: Message):
+    parts = (message.text or "").split()
+    if len(parts) != 2 or not parts[1].isdigit():
+        await message.answer("Использование: /delsub &lt;telegram_id&gt;", parse_mode="HTML")
+        return
+    tg_id = int(parts[1])
+    import asyncio
+    import check_client
+
+    rows, err = await asyncio.to_thread(check_client._collect_panel, tg_id)
+    if err:
+        await message.answer(f"Не удалось получить данные основной панели: {html.escape(err)}")
+        return
+    emails = sorted({r["client"].get("email") for r in rows if r["client"].get("email")})
+    text = (
+        f"⚠️ Удалить подписку клиента <code>{tg_id}</code> со <b>всех серверов</b>?\n"
+        f"На основной панели найдено клиентов: {len(rows)} ({html.escape(', '.join(emails)) or '—'}).\n"
+        "Действие необратимо."
+    )
+    await message.answer(
+        text,
+        parse_mode="HTML",
+        reply_markup=_kb([[
+            _btn("🗑 Да, удалить", f"delsub_yes:{tg_id}"),
+            _btn("Отмена", "delsub_no"),
+        ]]),
+    )
+
+
+@router.callback_query(_cb(r"^delsub_no$"))
+async def admin_delsub_cancel(callback: CallbackQuery):
+    await callback.message.edit_text("Удаление отменено.")
+    await callback.answer()
+
+
+@router.callback_query(_cb(r"^delsub_yes:\d+$"))
+async def admin_delsub_confirm(callback: CallbackQuery):
+    tg_id = int(callback.data.split(":")[1])
+    await callback.message.edit_text(f"⏳ Удаляю подписку {tg_id} со всех серверов…")
+    await callback.answer()
+    import asyncio
+    import api
+
+    def _run():
+        sub_id = None
+        info = api_ext.getSubById(tg_id)
+        if info.get("success"):
+            sub_id = info.get("subId")
+        main_res = api.dell_client_from_all_inbounds(tg_id)
+        remote_res = api.send_dell_client_webhook(tg_id, sub_id or "")
+        return main_res, remote_res
+
+    import api_extended as api_ext
+
+    try:
+        main_res, remote_res = await asyncio.to_thread(_run)
+    except Exception as e:
+        await callback.message.edit_text(f"Ошибка: {html.escape(str(e))}")
+        return
+
+    deleted = [r for r in main_res.get("results", []) if "email" in r]
+    lines = [f"🗑 <b>Удаление {tg_id}</b>"]
+    lines.append(
+        f"Основная панель: {'✅' if main_res.get('success') else '❌ ' + html.escape(str(main_res.get('error')))}, "
+        f"удалено записей: {len(deleted)}"
+    )
+    for r in remote_res.get("results", []):
+        mark = "✅" if r.get("success") else f"❌ {html.escape(str(r.get('error') or ''))}"
+        lines.append(f"{html.escape(str(r.get('label')))}: {mark}")
+    lines.append("\nПроверить результат: /check " + str(tg_id))
+    await callback.message.edit_text("\n".join(lines), parse_mode="HTML")

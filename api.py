@@ -6,6 +6,9 @@ import datetime
 import time
 import secrets
 import string
+import contextvars
+import contextlib
+import re
 from urllib.parse import quote
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -14,10 +17,106 @@ from config import PANEL_BASE_URL, PANEL_DOMAIN, PANEL_PORT, PANEL_PATH, REMOTE_
 BASE_URL = PANEL_BASE_URL
 
 
+# Основной сервер (заполняется из runtime_settings) и текущий сервер для запросов.
+MAIN_SERVER = None
+_current_server = contextvars.ContextVar("panel_server", default=None)
+_login_cache = {}
+_LOGIN_TTL = 600
+
+
 def panel_base_url() -> str:
     import runtime_settings
     runtime_settings.apply_if_stale()
+    server = _current_server.get()
+    if server is not None and server.get("panel_url"):
+        return str(server["panel_url"]).rstrip("/")
     return BASE_URL
+
+
+@contextlib.contextmanager
+def use_server(server):
+    """Все вызовы панели внутри блока идут на указанный сервер (None = основной)."""
+    token = _current_server.set(server)
+    try:
+        yield
+    finally:
+        _current_server.reset(token)
+
+
+def server_title(server) -> str:
+    if not server:
+        return "main"
+    return server.get("label") or server.get("name") or "server"
+
+
+_CSRF_RE = re.compile(r"""name=["']csrf-token["']\s+content=["']([^"']+)""")
+
+
+def _login_headers(server, force=False):
+    """Логин в 3x-ui по логину/паролю. Возвращает ({Cookie, X-CSRF-Token}, ошибка)."""
+    base = str(server.get("panel_url") or "").rstrip("/")
+    user = server.get("panel_user") or ""
+    password = server.get("panel_password") or ""
+    key = (base, user, password)
+    cached = _login_cache.get(key)
+    if cached and not force and time.time() - cached[0] < _LOGIN_TTL:
+        return dict(cached[1]), None
+    session = requests.Session()
+    session.verify = False
+    try:
+        page = session.get(f"{base}/", timeout=20)
+        match = _CSRF_RE.search(page.text or "")
+        csrf = match.group(1) if match else ""
+        response = session.post(
+            f"{base}/login",
+            data={"username": user, "password": password},
+            headers={"X-CSRF-Token": csrf} if csrf else {},
+            timeout=20,
+        )
+    except requests.exceptions.RequestException as exc:
+        return None, f"нет соединения с панелью: {exc}"
+    try:
+        payload = response.json()
+    except ValueError:
+        return None, f"панель вернула не JSON (HTTP {response.status_code}), проверьте ссылку"
+    if not payload.get("success"):
+        return None, str(payload.get("msg") or "неверный логин или пароль")
+    cookie = "; ".join(f"{c.name}={c.value}" for c in session.cookies)
+    if not cookie:
+        return None, "панель не выдала сессию"
+    # После входа токен может смениться, берём свежий со страницы панели.
+    try:
+        panel_page = session.get(f"{base}/panel/", timeout=20)
+        match = _CSRF_RE.search(panel_page.text or "")
+        if match:
+            csrf = match.group(1)
+    except requests.exceptions.RequestException:
+        pass
+    headers = {"Cookie": cookie}
+    if csrf:
+        headers["X-CSRF-Token"] = csrf
+    _login_cache[key] = (time.time(), headers)
+    return dict(headers), None
+
+
+def server_login_check(server):
+    """Проверка доступа к панели: (ok, текст ошибки)."""
+    auth, err = _login_headers(server, force=True)
+    if err:
+        return False, err
+    try:
+        r = requests.get(
+            f"{str(server['panel_url']).rstrip('/')}/panel/api/inbounds/list",
+            headers={**auth, "Accept": "application/json"},
+            verify=False,
+            timeout=20,
+        )
+        data = r.json()
+    except Exception as exc:
+        return False, f"список подключений не получен: {exc}"
+    if not data.get("success"):
+        return False, str(data.get("msg") or "панель отказала в доступе к API")
+    return True, None
 
 import secret
 
@@ -37,14 +136,28 @@ def generate_sub_prefix(length=8):
 
 
 def get_headers():
-    """Return headers with Bearer token authentication"""
+    """Заголовки для панели: сессия по логину/паролю у доп. сервера, Bearer-токен у основного."""
     import runtime_settings
     runtime_settings.apply_if_stale()
-    return {
-        "Authorization": f"Bearer {api_token}",
+    headers = {
         "Accept": "application/json",
         "Content-Type": "application/json"
     }
+    server = _current_server.get()
+    if server is not None and not server.get("is_primary"):
+        auth, err = _login_headers(server)
+        if err:
+            raise RuntimeError(f"{server_title(server)}: {err}")
+        headers.update(auth)
+        return headers
+    if server is not None and server.get("panel_user") and server.get("panel_password") and not api_token:
+        auth, err = _login_headers(server)
+        if err:
+            raise RuntimeError(f"{server_title(server)}: {err}")
+        headers.update(auth)
+        return headers
+    headers["Authorization"] = f"Bearer {api_token}"
+    return headers
 
 def get_clients():
     """Get list of clients using Bearer token authentication"""
@@ -490,99 +603,86 @@ def notify_admin_remote_server_error(tg_id, sub_id, date, error, context="соз
             print(f"[API] Failed to notify admin {chat_id} about remote error: {e}")
 
 
-def _post_remote_webhook(server, path: str, payload: dict, timeout: int = 60):
-    """Один POST на webhook одного удалённого сервера."""
-    label = server.get("label") or server.get("name") or "remote"
-    name = server.get("name") or label
-    base = str(server.get("base_url") or "").rstrip("/")
-    webhook_url = f"{base}{path}"
-
-    print(f"[API] Webhook POST {webhook_url} ({label})")
-    print(f"[API] Payload: {json.dumps(payload)}")
-
+def _remote_add_client(server, tg_id: int, sub_id: str, end_date: str = None):
+    """Создаёт клиента на всех inbound доп. сервера через API его панели."""
+    label = server_title(server)
     result = {
         "success": False,
-        "name": name,
+        "name": server.get("name") or label,
         "label": label,
-        "url": webhook_url,
-        "status_code": None,
-        "response": "",
-        "parsed": None,
         "error": None,
     }
-
     try:
-        webhook_response = requests.post(webhook_url, json=payload, timeout=timeout, verify=False)
-        print(f"[API] Webhook {label} status: {webhook_response.status_code}")
-        print(f"[API] Webhook {label} response: {webhook_response.text}")
-
-        raw = webhook_response.text or ""
-        parsed = None
-        try:
-            parsed = webhook_response.json()
-        except Exception:
-            parsed = None
-
-        if isinstance(parsed, dict) and "success" in parsed:
-            success = bool(parsed.get("success"))
-            error = None if success else (
-                parsed.get("error") or parsed.get("message") or raw[:500] or f"HTTP {webhook_response.status_code}"
-            )
+        if not end_date:
+            end_date = (datetime.datetime.now() + datetime.timedelta(days=30)).strftime("%d.%m.%Y")
+        expiry_ms = convert_date_to_timestamp(end_date)
+        if isinstance(expiry_ms, str):
+            result["error"] = expiry_ms
+            return result
+        with use_server(server):
+            created = create_subscription_on_panel(int(tg_id), end_date, sub_id, cleanup=True)
+            if not created.get("success"):
+                updated = update_subscription_on_panel(int(tg_id), sub_id, expiry_ms)
+                if updated.get("success"):
+                    created = {"success": True, "method": "update", "inbound_ids": updated.get("inbound_ids")}
+        if created.get("success"):
+            result.update({"success": True, "inbound_ids": created.get("inbound_ids")})
         else:
-            success = 200 <= webhook_response.status_code < 300
-            error = None if success else (raw[:500] or f"HTTP {webhook_response.status_code}")
-
-        result.update({
-            "success": success,
-            "status_code": webhook_response.status_code,
-            "response": raw,
-            "parsed": parsed,
-            "error": error,
-        })
-        return result
-    except requests.exceptions.Timeout:
-        print(f"[API] Webhook timeout: {webhook_url}")
-        result["error"] = "timeout"
-        return result
-    except requests.exceptions.ConnectionError:
-        print(f"[API] Webhook connection error: {webhook_url}")
-        result["error"] = "connection_error"
-        return result
-    except Exception as e:
-        print(f"[API] Webhook error ({label}): {e}")
-        result["error"] = str(e)
-        return result
+            panel_result = created.get("panel_result") or {}
+            result["error"] = str(
+                created.get("error") or panel_result.get("msg") or created.get("message") or "не удалось создать клиента"
+            )[:500]
+    except Exception as exc:
+        result["error"] = str(exc)[:500]
+    print(f"[API] Server {label} add_client: {result}")
+    return result
 
 
-def send_webhooks_to_all_remotes(path: str, payload: dict, timeout: int = 60):
-    """Параллельно дергает webhook на всех удалённых серверах."""
+def _remote_del_client(server, tg_id: int, sub_id: str):
+    """Удаляет клиента с доп. сервера по subId/tgId."""
+    label = server_title(server)
+    result = {"success": False, "name": server.get("name") or label, "label": label, "error": None}
+    try:
+        with use_server(server):
+            clients_data = get_clients()
+            if not clients_data.get("success"):
+                result["error"] = "не удалось получить список подключений"
+                return result
+            session, err = panel_session()
+            if session is None:
+                result["error"] = err or "нет входа в панель"
+                return result
+            seen = set()
+            for inbound in clients_data.get("obj", []):
+                settings_obj = parse_inbound_settings(inbound)
+                if not settings_obj:
+                    continue
+                for client in settings_obj.get("clients", []):
+                    if client.get("subId") == sub_id or str(client.get("tgId")) == str(tg_id):
+                        email = client.get("email")
+                        if email and email not in seen:
+                            seen.add(email)
+                            panel_del_client_by_email(session, inbound.get("id"), email)
+        result["success"] = True
+    except Exception as exc:
+        result["error"] = str(exc)[:500]
+    print(f"[API] Server {label} del_client: {result}")
+    return result
+
+
+def active_remote_servers():
     import runtime_settings
     runtime_settings.apply_if_stale()
-    servers = list(REMOTE_SERVERS or [])
+    return [dict(s) for s in (REMOTE_SERVERS or []) if s.get("enabled", True) and s.get("panel_url")]
+
+
+def _fanout(worker, servers=None):
+    """Параллельно выполняет worker(server) на всех активных доп. серверах."""
+    servers = active_remote_servers() if servers is None else servers
     if not servers:
         return {"success": True, "results": [], "error": None}
-
-    by_name = {}
-    workers = max(1, len(servers))
-    with ThreadPoolExecutor(max_workers=workers) as pool:
-        futures = {
-            pool.submit(_post_remote_webhook, server, path, payload, timeout): server
-            for server in servers
-        }
-        for fut in as_completed(futures):
-            server = futures[fut]
-            name = server.get("name") or server.get("label")
-            try:
-                by_name[name] = fut.result()
-            except Exception as e:
-                by_name[name] = {
-                    "success": False,
-                    "name": name,
-                    "label": server.get("label") or name,
-                    "error": str(e),
-                }
-
-    results = [by_name[s.get("name") or s.get("label")] for s in servers]
+    with ThreadPoolExecutor(max_workers=len(servers)) as pool:
+        results = list(pool.map(worker, servers))
     failed = [r for r in results if not r.get("success")]
     return {
         "success": not failed,
@@ -594,20 +694,165 @@ def send_webhooks_to_all_remotes(path: str, payload: dict, timeout: int = 60):
 
 
 def send_add_client_webhook(tg_id: int, sub_id: str, end_date: str = None):
-    """Создаёт подписку на всех удалённых серверах."""
-    webhook_payload = {"tg_id": tg_id, "sub_id": sub_id}
-    if end_date:
-        webhook_payload["end_date"] = end_date
-    return send_webhooks_to_all_remotes("/add_client", webhook_payload, timeout=60)
+    """Создаёт подписку на всех активных доп. серверах (имя сохранено для совместимости)."""
+    return _fanout(lambda server: _remote_add_client(server, tg_id, sub_id, end_date))
 
 
 def send_dell_client_webhook(tg_id: int, sub_id: str):
-    """Удаляет подписку на всех удалённых серверах."""
-    return send_webhooks_to_all_remotes(
-        "/dell_client",
-        {"tg_id": tg_id, "sub_id": sub_id},
-        timeout=30,
-    )
+    """Удаляет подписку на всех активных доп. серверах."""
+    return _fanout(lambda server: _remote_del_client(server, tg_id, sub_id))
+
+
+def inbound_kind(inbound) -> str:
+    """Название типа подключения, как на главном сервере: Быстрый, Стабильный, WebSocket..."""
+    protocol = str(inbound.get("protocol") or "").lower()
+    stream = inbound.get("streamSettings")
+    if isinstance(stream, str):
+        try:
+            stream = json.loads(stream)
+        except json.JSONDecodeError:
+            stream = {}
+    stream = stream or {}
+    network = str(stream.get("network") or "tcp").lower()
+    if protocol == "hysteria" or network == "hysteria":
+        return "Hysteria"
+    if network == "ws":
+        return "WebSocket"
+    if network == "grpc":
+        return "Trojan + gRPC" if protocol == "trojan" else "gRPC"
+    if network in ("xhttp", "splithttp", "httpupgrade", "h2", "http"):
+        return "Стабильный"
+    if network == "tcp":
+        return "Быстрый"
+    return network.upper() or protocol.upper() or "VPN"
+
+
+def server_name_prefix(server) -> str:
+    """'🇫🇮 Финляндия' из названия сервера (флаг берётся по стране, если его там нет)."""
+    label = str(server.get("label") or server.get("name") or "").strip()
+    first = label[:1]
+    if first and 0x1F1E6 <= ord(first) <= 0x1F1FF:
+        return label
+    try:
+        import provision_server
+
+        flag, country, _slug = provision_server.resolve_country(label)
+        return f"{flag} {country}"
+    except Exception:
+        return label
+
+
+def rename_server_inbounds(server):
+    """Переименовывает подключения доп. сервера по шаблону главного: '<флаг> <страна> (<тип>)'."""
+    prefix = server_name_prefix(server)
+    changed, errors = [], []
+    try:
+        with use_server(server):
+            data = get_clients()
+            if not data.get("success"):
+                return {"success": False, "error": "не получен список подключений", "changed": [], "errors": []}
+            inbounds = sorted(data.get("obj", []), key=lambda i: i.get("id") or 0)
+            used = {}
+            targets = []
+            for inbound in inbounds:
+                kind = inbound_kind(inbound)
+                used[kind] = used.get(kind, 0) + 1
+                targets.append((inbound, kind))
+            seen = {}
+            for inbound, kind in targets:
+                seen[kind] = seen.get(kind, 0) + 1
+                suffix = f" {seen[kind]}" if used[kind] > 1 else ""
+                new_remark = f"{prefix} ({kind}{suffix})"
+                if inbound.get("remark") == new_remark:
+                    continue
+                body = dict(inbound)
+                body["remark"] = new_remark
+                body.pop("clientStats", None)
+                r = requests.post(
+                    f"{panel_base_url()}/panel/api/inbounds/update/{inbound['id']}",
+                    json=body,
+                    headers=get_headers(),
+                    verify=False,
+                    timeout=30,
+                )
+                try:
+                    ok = r.status_code == 200 and bool(r.json().get("success"))
+                except ValueError:
+                    ok = False
+                if ok:
+                    changed.append((inbound.get("remark"), new_remark))
+                else:
+                    errors.append(f"{inbound.get('remark')}: HTTP {r.status_code} {r.text[:150]}")
+    except Exception as exc:
+        errors.append(str(exc))
+    return {"success": not errors, "changed": changed, "errors": errors}
+
+
+def sync_clients_to_server(server):
+    """Копирует клиентов основного сервера (по subId) на указанный сервер, на все его inbound.
+    Уже существующие на сервере subId пропускаются, срок берётся с основного."""
+    clients_data = get_clients()
+    if not clients_data.get("success"):
+        return {"success": False, "error": "не получен список клиентов основного сервера", "total": 0, "added": 0, "skipped": 0}
+    unique = {}
+    for inbound in clients_data.get("obj", []):
+        settings_obj = parse_inbound_settings(inbound)
+        for client in (settings_obj or {}).get("clients", []):
+            sub = client.get("subId")
+            if sub and sub not in unique:
+                unique[sub] = client
+
+    try:
+        with use_server(server):
+            target = get_clients()
+            if not target.get("success"):
+                return {"success": False, "error": "не получен список подключений нового сервера", "total": len(unique), "added": 0, "skipped": 0}
+            inbound_ids = [i.get("id") for i in target.get("obj", []) if i.get("id") is not None]
+            existing = {
+                c.get("subId")
+                for i in target.get("obj", [])
+                for c in (parse_inbound_settings(i) or {}).get("clients", [])
+                if c.get("subId")
+            }
+    except Exception as exc:
+        return {"success": False, "error": str(exc), "total": len(unique), "added": 0, "skipped": 0}
+    if not inbound_ids:
+        return {"success": False, "error": "на новом сервере нет подключений", "total": len(unique), "added": 0, "skipped": 0}
+
+    todo = [(sub, c) for sub, c in unique.items() if sub not in existing]
+
+    def push(item):
+        sub, client = item
+        tg = client.get("tgId") or 0
+        try:
+            tg = int(tg)
+        except (TypeError, ValueError):
+            tg = 0
+        sub_prefix = sub.rsplit("_", 1)[0] if "_" in sub else sub
+        data = build_subscription_client(sub_prefix, tg, int(client.get("expiryTime") or 0), sub)
+        data["totalGB"] = client.get("totalGB") or 0
+        data["limitIp"] = client.get("limitIp") or 0
+        try:
+            with use_server(server):
+                res = panel_add_client(data, inbound_ids)
+        except Exception as exc:
+            return False, str(exc)
+        return bool(res.get("success")), str(res.get("msg") or res.get("error") or "")
+
+    added, first_error = 0, None
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        for ok, err in pool.map(push, todo):
+            if ok:
+                added += 1
+            elif first_error is None:
+                first_error = err
+    return {
+        "success": added == len(todo),
+        "total": len(unique),
+        "added": added,
+        "skipped": len(unique) - len(todo),
+        "error": first_error,
+    }
 
 
 def cleanup_clients_for_subscription(sub_id: str, tg_id: int):
@@ -642,6 +887,12 @@ def cleanup_clients_for_subscription(sub_id: str, tg_id: int):
         print(f"[API] Cleanup delete email={email}: {del_result}")
 
     return {"success": True, "deleted": deleted, "emails": list(emails_to_delete)}
+
+
+def _is_already_exists_error(result) -> bool:
+    """Панель ответила, что клиент (email/id/subId) уже существует."""
+    text = json.dumps(result, ensure_ascii=False).lower() if result else ""
+    return any(m in text for m in ("already exist", "duplicate", "exists", "уже существ", "уже есть"))
 
 
 def create_subscription_on_panel(tg_id: int, date: str, sub_id: str, cleanup: bool = True):
@@ -680,12 +931,38 @@ def create_subscription_on_panel(tg_id: int, date: str, sub_id: str, cleanup: bo
 
     client_data = build_subscription_client(sub_prefix, tg_id, expiry_ms, sub_id)
     print(f"[API] Batch create: subId={sub_id}, inbounds={inbound_ids}")
-    panel_result = panel_add_client(client_data, inbound_ids)
+    # Панель НЕ отклоняет дубликаты email (создаёт второго клиента с новым UUID),
+    # поэтому наличие клиента проверяем сами и тогда только меняем дату.
+    already = False
+    if not cleanup:
+        try:
+            already = bool(getSubById(tg_id).get("success"))
+        except Exception as e:
+            print(f"[API] existing-client check failed: {e}")
+
+    if already:
+        panel_result = {"success": False, "msg": "already exists"}
+    else:
+        panel_result = panel_add_client(client_data, inbound_ids)
+
+    method = "create"
+    if not panel_result.get("success") and _is_already_exists_error(panel_result):
+        # Клиент уже есть — просто меняем дату окончания (UUID/subId не трогаем)
+        print(f"[API] Client {sub_id} already exists -> extending by expiry update")
+        upd = _apply_expiry_to_user_inbounds(tg_id, expiry_ms)
+        if not upd.get("success"):
+            upd = update_subscription_on_panel(tg_id, sub_id, expiry_ms)
+        panel_result = {**upd, "success": bool(upd.get("success"))}
+        method = "update"
 
     success = bool(panel_result.get("success"))
     return {
         "success": success,
-        "message": f"Client added to {len(inbound_ids)} inbounds" if success else "Failed to add client to panel",
+        "method": method,
+        "message": (
+            f"Client {'added to' if method == 'create' else 'expiry updated on'} {len(inbound_ids)} inbounds"
+            if success else "Failed to add client to panel"
+        ),
         "subId": sub_id,
         "client_prefix": sub_prefix,
         "inbound_ids": inbound_ids,
@@ -754,8 +1031,6 @@ def panel_update_inbound_client(session, inbound_id, protocol, route_client_id, 
 
 def _apply_expiry_to_user_inbounds(tg_id: int, new_expiry_ms: int, inbound_ids=None):
     """Обновляет expiryTime у клиента на указанных inbound (без смены subId / UUID)."""
-    if inbound_ids is None:
-        inbound_ids = {1, 2, 3, 4}
 
     clients_data = get_clients()
     if not clients_data.get("success"):
@@ -766,9 +1041,10 @@ def _apply_expiry_to_user_inbounds(tg_id: int, new_expiry_ms: int, inbound_ids=N
         return {"success": False, "error": err or "Login failed", "results": []}
 
     results = []
+    by_email = {}  # email -> {"client": dict, "inbounds": [ids]}
     for inbound in clients_data.get("obj", []):
         iid = inbound.get("id")
-        if iid not in inbound_ids:
+        if inbound_ids is not None and iid not in inbound_ids:
             continue
 
         settings_obj = parse_inbound_settings(inbound)
@@ -776,38 +1052,26 @@ def _apply_expiry_to_user_inbounds(tg_id: int, new_expiry_ms: int, inbound_ids=N
             results.append({"inbound_id": iid, "error": "bad settings"})
             continue
 
-        protocol = inbound.get("protocol", "vless")
         matches = find_clients_for_tg_on_inbound(settings_obj, tg_id, iid)
         if not matches:
             results.append({"inbound_id": iid, "skipped": "no client for this tg_id"})
             continue
+        for c in matches:
+            em = c.get("email")
+            if not em:
+                continue
+            entry = by_email.setdefault(em, {"client": c, "inbounds": []})
+            entry["inbounds"].append(iid)
 
-        print(f"[DEBUG expire] Found {len(matches)} matches for tg_id={tg_id} on inbound {iid}")
-
-        primary = matches[0]
-        print(f"[DEBUG expire] Primary client: id={primary.get('id')}, email={primary.get('email')}, tgId={primary.get('tgId')}")
-        
-        for extra in matches[1:]:
-            em = extra.get("email")
-            if em:
-                panel_del_client_by_email(session, iid, em)
-
-        route_id = _client_route_id(protocol, primary)
-        print(f"[DEBUG expire] route_id={route_id}, protocol={protocol}")
-        if not route_id:
-            results.append({"inbound_id": iid, "error": "cannot resolve client id for API path"})
-            continue
-
-        updated = dict(primary)
+    # Новый API панели: один запрос на email, сразу для всех его inbound
+    for em, entry in by_email.items():
+        updated = dict(entry["client"])
         updated["expiryTime"] = new_expiry_ms
         updated["enable"] = True
         if updated.get("tgId") is None:
             updated["tgId"] = tg_id
-
-        upd = panel_update_inbound_client(
-            session, iid, protocol, route_id, settings_obj, updated
-        )
-        results.append({"inbound_id": iid, "update_result": upd})
+        upd = panel_update_client_by_email(session, em, updated, entry["inbounds"])
+        results.append({"email": em, "inbound_ids": entry["inbounds"], "update_result": upd})
 
     # Считаем операцию успешной если обновлено хотя бы на одном инбаунде
     updated_rows = [r for r in results if "update_result" in r]
@@ -821,8 +1085,6 @@ def renew_subscription_on_panel(tg_id: int, additional_months: int, inbound_ids=
     """
     Продление: текущий срок (или сейчас, если истёк) + N месяцев по 30 суток.
     """
-    if inbound_ids is None:
-        inbound_ids = {1, 2, 3, 4}
 
     client_info = getSubById(tg_id)
     if not client_info.get("success"):
@@ -854,8 +1116,6 @@ def set_subscription_expiry_on_panel(tg_id: int, new_expiry_ms: int, inbound_ids
     Выставить дату окончания подписки в абсолютное время (на всех инбаундах 1–4).
     Для админки: «на 1 месяц» = до now+30d, а не продление поверх остатка.
     """
-    if inbound_ids is None:
-        inbound_ids = {1, 2, 3, 4}
 
     client_info = getSubById(tg_id)
     old_expiry = 0
@@ -1000,7 +1260,36 @@ def renew_subscription(tg_id: int, additional_months: int):
     
     print(f"[RENEW] Old expiry: {current_expiry}, new expiry: {new_expiry_ms} ({new_date_str})")
     
-    # 3. Удаляем клиента на основной панели
+    # 3a. Основной путь: просто меняем дату окончания (без удаления клиента)
+    upd = _apply_expiry_to_user_inbounds(tg_id, new_expiry_ms)
+    print(f"[RENEW] Expiry update result: {upd}")
+    if upd.get("success"):
+        webhook_result = send_add_client_webhook(tg_id, sub_id, new_date_str)
+        remote_ok = bool(webhook_result.get("success"))
+        remote_res = webhook_result.get("results") or []
+        remote_err = None
+        if not remote_ok:
+            remote_err = remote_error_text(webhook_result)
+            notify_admin_remote_server_error(
+                tg_id=tg_id, sub_id=sub_id, date=new_date_str, error=remote_err,
+                context="продление подписки", remote_results=remote_res,
+            )
+        return {
+            "success": True,
+            "message": f"Subscription renewed for {additional_months} months (update)",
+            "subId": sub_id,
+            "old_expiry": current_expiry,
+            "new_expiry": new_expiry_ms,
+            "new_date": new_date_str,
+            "method": "update",
+            "main_success": True,
+            "remote_success": remote_ok,
+            "remote_error": remote_err,
+            "remote_results": remote_res,
+            "results": {"deleted": None, "created": None, "updated": upd},
+        }
+
+    # 3b. Fallback: удаляем клиента на основной панели и пересоздаём
     print(f"[RENEW] Deleting client from main panel...")
     del_result = dell_client_from_all_inbounds(tg_id)
     print(f"[RENEW] Delete from main panel result: {del_result}")
